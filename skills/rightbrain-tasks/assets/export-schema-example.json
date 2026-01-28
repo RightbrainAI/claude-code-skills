@@ -1,0 +1,34 @@
+{
+  "_export_version": "1.0",
+  "_exported_at": "2026-01-23T12:00:00Z",
+  "_source_project": "My Project",
+  "_notes": "RAG and task forwarding settings excluded - reconfigure after import if needed",
+
+  "name": "Email Intent Classifier",
+  "description": "Classifies incoming emails by intent and urgency level",
+  "enabled": true,
+  "output_modality": "json",
+  "system_prompt": "You are an expert email analyst specializing in business communication classification.\n\nYour expertise includes:\n- Identifying email intent and purpose\n- Assessing urgency and priority levels\n- Recognizing action items and requests\n\nConstraints:\n- Be objective and consistent in classifications\n- When uncertain, provide reasoning for your choice\n- Consider the full context of the email",
+  "user_prompt": "## Goal\nClassify the email by intent and assess its urgency level.\n\n## Input\n{email_content}: The full text of the email to classify\n\n## Instructions\n1. Read the email content carefully\n2. Identify the primary intent (inquiry, complaint, request, feedback, or other)\n3. Assess the urgency level based on language, deadlines mentioned, and context\n4. Extract any action items if present\n5. Provide brief reasoning for your classification\n\n## Output Requirements\n- Intent must be one of the defined categories\n- Urgency must be low, medium, or high\n- Include at least one sentence of reasoning",
+  "output_format": {
+    "intent": {
+      "type": "str",
+      "options": ["inquiry", "complaint", "request", "feedback", "other"]
+    },
+    "urgency": {
+      "type": "str",
+      "options": ["low", "medium", "high"]
+    },
+    "action_items": {
+      "type": "list",
+      "item_type": "str"
+    },
+    "reasoning": "str"
+  },
+  "llm_model_name": "gpt-4o-mini",
+  "llm_config": {
+    "temperature": 0.2
+  },
+  "input_processors": [],
+  "image_required": false
+}

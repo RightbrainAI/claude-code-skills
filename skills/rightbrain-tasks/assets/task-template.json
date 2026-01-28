@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$comment": "Complete Rightbrain task configuration template - all fields shown with descriptions",
+
+  "name": "Task Name Here",
+  "description": "Internal description of what this task does",
+  "enabled": true,
+
+  "output_modality": "json",
+
+  "public": false,
+  "exposed_to_agents": false,
+  "task_run_visibility": "owner_only",
+
+  "system_prompt": "You are a [role] specializing in [domain].\n\nYour expertise includes:\n- [Capability 1]\n- [Capability 2]\n\nConstraints:\n- [Constraint 1]\n- [Constraint 2]",
+
+  "user_prompt": "## Goal\n[One sentence describing the objective]\n\n## Context\n[Background information]\n\n## Input\n{input_variable_1}: [Description]\n{input_variable_2}: [Description]\n\n## Instructions\n1. [Step 1]\n2. [Step 2]\n3. [Step 3]\n\n## Output Requirements\n- [Requirement 1]\n- [Requirement 2]",
+
+  "llm_model_id": "00000000-0000-0000-0000-000000000000",
+
+  "llm_config": {
+    "temperature": 0.3
+  },
+
+  "output_format": {
+    "simple_field": "str",
+    "number_field": "int",
+    "decimal_field": "number",
+    "boolean_field": "bool",
+
+    "field_with_description": {
+      "type": "str",
+      "description": "Explanation of what this field should contain"
+    },
+
+    "enum_field": {
+      "type": "str",
+      "options": ["option_a", "option_b", "option_c"]
+    },
+
+    "simple_list": {
+      "type": "list",
+      "item_type": "str"
+    },
+
+    "list_of_objects": {
+      "type": "list",
+      "item_type": "object",
+      "nested_structure": {
+        "name": "str",
+        "value": "number"
+      }
+    },
+
+    "nested_object": {
+      "type": "object",
+      "nested_structure": {
+        "sub_field_1": "str",
+        "sub_field_2": "int"
+      }
+    }
+  },
+
+  "image_required": false,
+  "optimise_images": true,
+
+  "input_processors": [
+    {
+      "$comment": "Example: URL fetcher processor",
+      "param_name": "website_content",
+      "input_processor": "url_fetcher",
+      "config": {
+        "fallback_text": "Unable to fetch URL content"
+      }
+    },
+    {
+      "$comment": "Example: Perplexity search processor",
+      "param_name": "research_results",
+      "input_processor": "perplexity_search",
+      "config": {
+        "max_results": 5,
+        "query_context": "{research_results} latest information",
+        "fallback_text": "Search unavailable"
+      }
+    },
+    {
+      "$comment": "Example: Document extractor processor",
+      "param_name": "document_text",
+      "input_processor": "document_content_extractor",
+      "config": {
+        "filename": "document.pdf",
+        "strategy": "fast"
+      }
+    }
+  ],
+
+  "rag": null,
+
+  "task_forwarder_id": null,
+
+  "fallback_llm_model_id": null,
+  "fallback_llm_config": null,
+
+  "annotation": "Initial version"
+}
