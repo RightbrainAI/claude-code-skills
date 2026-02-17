@@ -22,20 +22,17 @@ Run these commands inside Claude Code:
 /plugin install rightbrain-tasks
 ```
 
+That's it! The skill will handle authentication automatically when you first use it.
+
 ### Option B: Manual install
 
 ```bash
 git clone https://github.com/RightbrainAI/claude-code-skills.git
 cp -r claude-code-skills/skills/rightbrain-tasks ~/.claude/skills/
-```
-
-### Authenticate
-
-```bash
 npx rightbrain@latest login
 ```
 
-That's it! Restart Claude Code and the skill will be available.
+Restart Claude Code and the skill will be available.
 
 ## Skill: rightbrain-tasks
 
