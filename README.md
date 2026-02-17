@@ -69,7 +69,7 @@ Say any of these to activate the skill:
 ## Authentication
 
 1. Run `npx rightbrain@latest login` (or the skill prompts you automatically)
-2. Sign in via your browser
+2. Sign in via your browser — don't have an account? You can sign up for free during this step
 3. Select your organization and project
 4. Credentials stored securely in `~/.rightbrain/credentials.json`
 
