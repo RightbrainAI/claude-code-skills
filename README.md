@@ -25,10 +25,10 @@ git clone https://github.com/RightbrainAI/claude-code-skills.git
 cp -r claude-code-skills/skills/rightbrain-tasks ~/.claude/skills/
 ```
 
-### 3. Set your API key
+### 3. Authenticate
 
 ```bash
-export RIGHTBRAIN_API_KEY="your-api-key"
+npx rightbrain@latest login
 ```
 
 That's it! Restart Claude Code and the skill will be available.
@@ -65,27 +65,12 @@ Say any of these to activate the skill:
 | **Analysis** | Evaluate and score | Lead scoring, risk assessment |
 | **Image** | Generate visuals | Social media images, product photos |
 
-## Getting Your API Key
+## Authentication
 
-1. Sign up or log in at [app.rightbrain.ai](https://app.rightbrain.ai)
-2. Go to **Settings** → **API Clients**
-3. Click **Create API Key**
-4. Copy the key immediately (it's only shown once)
-5. Store it securely
-
-### Setting the API Key
-
-**Option A: Environment variable (recommended)**
-
-Add to your shell profile (`~/.bashrc`, `~/.zshrc`, etc.):
-
-```bash
-export RIGHTBRAIN_API_KEY="rb_your_key_here"
-```
-
-**Option B: Enter when prompted**
-
-If no environment variable is set, the skill will ask for your API key when you use it.
+1. Run `npx rightbrain@latest login` (or the skill prompts you automatically)
+2. Sign in via your browser
+3. Select your organization and project
+4. Credentials stored securely in `~/.rightbrain/credentials.json`
 
 ## Documentation
 
@@ -96,7 +81,8 @@ If no environment variable is set, the skill will ask for your API key when you 
 ## Requirements
 
 - [Claude Code](https://claude.ai/claude-code) CLI installed
-- A [Rightbrain](https://rightbrain.ai) account with API access
+- [Node.js](https://nodejs.org/) (for `npx rightbrain@latest login`)
+- A [Rightbrain](https://rightbrain.ai) account
 
 ## Repository Structure
 

@@ -4,6 +4,7 @@ description: |
   Manage Rightbrain tasks - create, browse, run, update, export, and import task configurations.
   Use when user wants to work with Rightbrain AI tasks.
   Trigger with "rightbrain tasks", "rightbrain task", "manage tasks", "create task", "run task", or "browse tasks".
+allowed-tools: Bash(curl *), Bash(npx rightbrain*), Bash(node *), Bash(cat *), Bash([ *), Bash(mkdir *), Bash(jq *)
 ---
 
 # Rightbrain Task Manager
@@ -28,7 +29,7 @@ Tasks return predictable, typed outputs. Use `output_format` to define the exact
 ### Context Tracking
 
 Throughout this workflow, you must track these values across phases:
-- `API_KEY` - The user's Rightbrain API key (from env var or user input)
+- `ACCESS_TOKEN` - Bearer token from `~/.rightbrain/credentials.json` (obtained via `npx rightbrain@latest login`)
 - `ORG_ID` - Selected organization UUID
 - `PROJECT_ID` - Selected project UUID
 - `TASK_ID` - Currently selected task UUID (when applicable)
@@ -43,56 +44,111 @@ Before any API operations, establish credentials and select the working context.
 
 **Exit option:** At any point in this phase, if the user says "cancel", "exit", or "never mind", exit the skill gracefully with: "No problem! Run this skill again when you're ready to work with Rightbrain tasks."
 
-#### Step 1: Check for API Credentials
+#### Step 1: Check for Existing Authentication
 
-First, check for existing credentials in the environment:
+Check if the user has authenticated via the Rightbrain CLI:
 
 ```bash
-[ -n "$RIGHTBRAIN_API_KEY" ] && echo "API key configured" || echo "API key not set"
+[ -f ~/.rightbrain/credentials.json ] && echo "CREDENTIALS_FILE_EXISTS=yes" || echo "CREDENTIALS_FILE_EXISTS=no"
 ```
 
-**If environment variable exists (output shows "API key configured"):**
-- Use the existing key
-- Proceed to validation
+**If `CREDENTIALS_FILE_EXISTS=yes`:** Skip to Step 3 (Load credentials).
 
-**If environment variable is NOT set:**
-- Ask user for their API key:
-  ```
-  To interact with the Rightbrain API, I need your API key.
+**If `CREDENTIALS_FILE_EXISTS=no`:** Go to Step 2 (First-time login).
 
-  You can find it at: https://app.rightbrain.ai/preferences?tab=api-clients
+#### Step 2: First-Time Login
 
-  Please paste your API key:
-  ```
+The user hasn't authenticated yet. Tell them what's about to happen, then run the login:
 
-**Security reminder:** Tell the user their API key will only be used for this session and won't be stored.
+```
+You're not authenticated with Rightbrain yet. Let's get you set up!
 
-**API key usage in commands:**
-- If using environment variable: Use `$RIGHTBRAIN_API_KEY` directly in curl commands to prevent shell history exposure
-- If user provided key manually: Store in your context and substitute directly into commands (the key will appear in shell history, but this is unavoidable for session-based keys)
+I'll open your browser to sign in — no API keys needed.
+```
 
-#### Step 2: Validate Credentials & Fetch Organizations
+```bash
+npx rightbrain@latest login --non-interactive
+```
 
-Validate the API key by fetching organizations:
+This will open the user's browser to sign in. After authentication, credentials are stored in `~/.rightbrain/credentials.json`.
+
+**If login succeeds:** Proceed to Step 3 (Load credentials).
+
+**If login fails** (command exits with an error, or credentials file doesn't exist after):
+```
+Login didn't complete. You can try running `npx rightbrain@latest login` manually in your terminal, then let me know when you're done.
+```
+Exit skill gracefully.
+
+#### Step 3: Load Credentials
+
+Read the stored credentials and check token expiry:
+
+```bash
+node -e "
+const c = JSON.parse(require('fs').readFileSync(process.env.HOME + '/.rightbrain/credentials.json', 'utf8'));
+const token = c.access_token || '';
+const expiresAt = c.expires_at || 0;
+const expired = expiresAt && Date.now() >= expiresAt - 300000 ? 'yes' : 'no';
+console.log('TOKEN_SET=' + (token ? 'yes' : 'no'));
+console.log('EXPIRED=' + expired);
+console.log('ORG_ID=' + (c.org_id || ''));
+console.log('PROJECT_ID=' + (c.project_id || ''));
+"
+```
+
+**If TOKEN_SET=no:** Something is wrong with the credentials file. Go to Step 2 (re-login).
+
+**If EXPIRED=yes:** Token has expired. Tell the user and re-authenticate:
+```
+Your session has expired. Let me refresh it.
+```
+```bash
+npx rightbrain@latest login --non-interactive
+```
+Then re-read credentials from Step 3.
+
+**If EXPIRED=no:** Token is valid. Extract the access token:
+
+```bash
+node -e "console.log(JSON.parse(require('fs').readFileSync(process.env.HOME + '/.rightbrain/credentials.json', 'utf8')).access_token)"
+```
+
+Store this output as `ACCESS_TOKEN` in your context for all subsequent curl commands.
+
+#### Step 4: Validate Token & Determine Context
+
+Test the token and fetch organizations:
 
 ```bash
 curl -s -X GET "https://app.rightbrain.ai/api/v1/org" \
-  -H "Authorization: Bearer {API_KEY}" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json"
 ```
 
-**If 401 response:**
+**If 401 response:** Token is invalid despite not being expired. Tell the user and re-authenticate:
 ```
-API key is invalid or expired. Please check your key at:
-https://app.rightbrain.ai/preferences?tab=api-clients
+Your stored credentials appear to be invalid. Let me re-authenticate.
 ```
-Ask user to re-enter their API key.
+```bash
+npx rightbrain@latest login --non-interactive
+```
+Then restart from Step 3.
 
-**If 200 response:** Credentials valid - proceed with organization data.
+**If 200 response:** Token is valid.
 
-#### Step 3: Select Organization
+Now check if org and project are already set from the credentials file:
 
-Parse the organization list from the response.
+**If both ORG_ID and PROJECT_ID are present** (non-empty from Step 3):
+- Use them directly — skip org/project selection
+- Confirm to the user: `Using organization {org_name} and project {project_name} from your saved session.`
+- Proceed to Step 7 (Prefetch models)
+
+**If ORG_ID or PROJECT_ID is missing:** Proceed to Step 5 (Select organization).
+
+#### Step 5: Select Organization
+
+Parse the organization list from the Step 4 response.
 
 **If 0 organizations:**
 ```
@@ -113,13 +169,13 @@ Use AskUserQuestion:
 - Header: "Organization"
 - Options: List each org as "{name}" with description showing the org ID
 
-#### Step 4: Select Project
+#### Step 6: Select Project
 
 Fetch projects for the selected organization:
 
 ```bash
 curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project" \
-  -H "Authorization: Bearer {API_KEY}" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json"
 ```
 
@@ -142,13 +198,13 @@ Use AskUserQuestion:
 - Header: "Project"
 - Options: List each project as "{name}" with description showing the project ID
 
-#### Step 5: Prefetch Available Models (for Create/Import flows)
+#### Step 7: Prefetch Available Models (for Create/Import flows)
 
-After selecting a project, fetch available models so they're ready for task creation or import:
+After org and project are established, fetch available models:
 
 ```bash
 curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/model" \
-  -H "Authorization: Bearer $RIGHTBRAIN_API_KEY" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json"
 ```
 
@@ -187,7 +243,7 @@ Use AskUserQuestion:
 
 ```bash
 curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task?page_limit=50" \
-  -H "Authorization: Bearer {API_KEY}" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json"
 ```
 
@@ -236,7 +292,7 @@ Use AskUserQuestion:
 
 ```bash
 curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task/{TASK_ID}" \
-  -H "Authorization: Bearer {API_KEY}" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json"
 ```
 
@@ -267,7 +323,7 @@ Please provide a value for {variable_name}:
 
 ```bash
 curl -s -X POST "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task/{TASK_ID}/run" \
-  -H "Authorization: Bearer {API_KEY}" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
   -d @- << 'EOF'
 {
@@ -332,7 +388,7 @@ Use AskUserQuestion:
 
 ```bash
 curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task/{TASK_ID}" \
-  -H "Authorization: Bearer {API_KEY}" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json"
 ```
 
@@ -383,7 +439,7 @@ Based on selection, guide user through the specific update:
 
 ```bash
 curl -s -X POST "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task/{TASK_ID}" \
-  -H "Authorization: Bearer {API_KEY}" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
   -d @- << 'EOF'
 {
@@ -410,7 +466,7 @@ Update the task with `active_revisions` to make the new revision active:
 
 ```bash
 curl -s -X POST "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task/{TASK_ID}" \
-  -H "Authorization: Bearer {API_KEY}" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
   -d @- << 'EOF'
 {
@@ -429,7 +485,7 @@ Use the `revision_id` query parameter to test before activating:
 
 ```bash
 curl -s -X POST "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task/{TASK_ID}/run?revision_id={NEW_REVISION_ID}" \
-  -H "Authorization: Bearer {API_KEY}" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
   -d @- << 'EOF'
 {
@@ -465,7 +521,7 @@ Then immediately run the task with the new revision to verify the changes work a
 
 ```bash
 curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task/{TASK_ID}?include_tests=false" \
-  -H "Authorization: Bearer {API_KEY}" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json"
 ```
 
@@ -559,7 +615,7 @@ The export contains `llm_model_name`. Fetch available models and find matching U
 
 ```bash
 curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/model" \
-  -H "Authorization: Bearer {API_KEY}" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json"
 ```
 
@@ -579,7 +635,7 @@ Fetch existing tasks and check if name already exists:
 
 ```bash
 curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task?name={task_name}" \
-  -H "Authorization: Bearer {API_KEY}" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json"
 ```
 
@@ -600,7 +656,7 @@ Transform import config to TaskCreate format:
 
 ```bash
 curl -s -X POST "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task" \
-  -H "Authorization: Bearer {API_KEY}" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
   -d @- << 'EOF'
 {
@@ -830,7 +886,7 @@ Since we already have credentials from Phase 0, proceed directly to deployment.
 
 ```bash
 curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/model" \
-  -H "Authorization: Bearer {API_KEY}" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json"
 ```
 
@@ -843,7 +899,7 @@ Parse the response to find the best model for the task type. Look for:
 
 ```bash
 curl -s -X POST "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task" \
-  -H "Authorization: Bearer {API_KEY}" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
   -d @- << 'EOF'
 {
@@ -864,7 +920,7 @@ On success, tell the user:
 On failure, parse the error and help fix it:
 - 400 errors: Show validation message, suggest fix
 - 400 `duplicate_task_name`: Use a unique task name (add version suffix like "v2")
-- 401 errors: API key issue
+- 401 errors: Session expired — re-run `npx rightbrain@latest login`
 - 403 errors: Permission issue
 
 **Step 4: Offer to run the task**
@@ -910,9 +966,11 @@ Passing parameters at the root level will return a validation error.
 
 All requests require:
 ```
-Authorization: Bearer {api_key}
+Authorization: Bearer {access_token}
 Content-Type: application/json
 ```
+
+Credentials are obtained via `npx rightbrain@latest login` and stored in `~/.rightbrain/credentials.json`.
 
 ---
 
@@ -924,7 +982,7 @@ Content-Type: application/json
 |--------|-------|----------|
 | 400 | Validation error | Check error message, fix input |
 | 400 | `duplicate_task_name` | Task name already exists - use unique name |
-| 401 | Invalid/expired API key | Check key at dashboard, regenerate if needed |
+| 401 | Invalid/expired session | Re-run `npx rightbrain@latest login` to refresh credentials |
 | 403 | No permission on resource | Verify access in dashboard |
 | 404 | Resource not found | Verify org/project/task IDs are correct |
 | 429 | Rate limit exceeded | Wait 30 seconds before retrying |
@@ -943,7 +1001,7 @@ Content-Type: application/json
 
 ```bash
 curl -s --connect-timeout 10 --max-time 30 -X POST "..." \
-  -H "Authorization: Bearer $RIGHTBRAIN_API_KEY" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
   -d '...'
 ```
