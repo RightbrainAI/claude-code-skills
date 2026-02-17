@@ -13,19 +13,23 @@ Official Claude Code skills for [Rightbrain AI](https://rightbrain.ai) - the pla
 
 ## Quick Start
 
-### 1. Clone this repository
+### Option A: Install via Claude Code (recommended)
+
+Run these commands inside Claude Code:
+
+```
+/plugin marketplace add https://github.com/RightbrainAI/claude-code-skills
+/plugin install rightbrain-tasks
+```
+
+### Option B: Manual install
 
 ```bash
 git clone https://github.com/RightbrainAI/claude-code-skills.git
-```
-
-### 2. Copy skill to Claude Code
-
-```bash
 cp -r claude-code-skills/skills/rightbrain-tasks ~/.claude/skills/
 ```
 
-### 3. Authenticate
+### Authenticate
 
 ```bash
 npx rightbrain@latest login
