@@ -15,7 +15,7 @@ Use cases include classification, data extraction, content generation, image cre
 
 | Plugin | Description |
 |--------|-------------|
-| **rightbrain-tasks** | Complete task manager for the Rightbrain API. Create, browse, run, update, export, and import AI tasks — all from Claude Code. |
+| **rightbrain-tasks** | Complete task manager for the Rightbrain API. Create, browse, run, update, export, and import AI tasks. |
 
 ## Quick Start
 
