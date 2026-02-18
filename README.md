@@ -3,12 +3,18 @@
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Skills-blueviolet)](https://claude.ai/claude-code)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Official Claude Code skills for [Rightbrain AI](https://rightbrain.ai) - the platform for building, deploying, and managing AI tasks.
+Official Claude Code plugin for [Rightbrain AI](https://rightbrain.ai) — the platform that lets you create, deploy, and manage AI tasks as simple API calls.
+
+## What is Rightbrain?
+
+Rightbrain lets you build **Tasks** — custom AI functions that take specific inputs and return structured outputs. Each task combines a language model with instructions and an output schema, making AI reliable enough for production. No models to host, no prompt versioning to build — just define a task and call it via API.
+
+Use cases include classification, data extraction, content generation, image creation, and more. [Learn more](https://docs.rightbrain.ai/docs/getting-started/introduction)
 
 ## What's Included
 
-| Skill | Description |
-|-------|-------------|
+| Plugin | Description |
+|--------|-------------|
 | **rightbrain-tasks** | Complete task manager for the Rightbrain API. Create, browse, run, update, export, and import AI tasks. |
 
 ## Quick Start
@@ -19,7 +25,7 @@ Run these commands inside Claude Code:
 
 ```
 /plugin marketplace add https://github.com/RightbrainAI/claude-code-skills
-/plugin install rightbrain-tasks
+/plugin install rightbrain-tasks@rightbrain-skills
 ```
 
 That's it! The skill will handle authentication automatically when you first use it.
@@ -28,7 +34,7 @@ That's it! The skill will handle authentication automatically when you first use
 
 ```bash
 git clone https://github.com/RightbrainAI/claude-code-skills.git
-cp -r claude-code-skills/skills/rightbrain-tasks ~/.claude/skills/
+cp -r claude-code-skills/plugins/rightbrain-tasks/skills/rightbrain-tasks ~/.claude/skills/
 npx rightbrain@latest login
 ```
 
@@ -89,23 +95,29 @@ Say any of these to activate the skill:
 
 ```
 claude-code-skills/
+├── .claude-plugin/
+│   └── marketplace.json                # Plugin marketplace catalog
 ├── README.md
 ├── LICENSE
-└── skills/
-    └── rightbrain-tasks/
-        ├── SKILL.md                    # Main skill file
-        ├── assets/
-        │   ├── task-template.json      # Complete task template
-        │   ├── export-schema-example.json
-        │   └── examples/
-        │       ├── classification.md
-        │       ├── extraction.md
-        │       └── generation.md
-        └── references/
-            ├── task-components.md      # Schema reference
-            ├── output-formats.md       # Type system docs
-            ├── prompt-patterns.md      # Prompt templates
-            └── image-generation.md     # Image task guide
+└── plugins/
+    └── rightbrain-tasks/               # Plugin root
+        ├── .claude-plugin/
+        │   └── plugin.json             # Plugin manifest
+        └── skills/
+            └── rightbrain-tasks/       # Skill directory
+                ├── SKILL.md            # Main skill file
+                ├── assets/
+                │   ├── task-template.json
+                │   ├── export-schema-example.json
+                │   └── examples/
+                │       ├── classification.md
+                │       ├── extraction.md
+                │       └── generation.md
+                └── references/
+                    ├── task-components.md
+                    ├── output-formats.md
+                    ├── prompt-patterns.md
+                    └── image-generation.md
 ```
 
 ## Contributing
