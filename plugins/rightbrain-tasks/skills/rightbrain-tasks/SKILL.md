@@ -1,15 +1,17 @@
 ---
 name: rightbrain-tasks
 description: |
-  Manage Rightbrain tasks - create, browse, run, update, export, and import task configurations.
+  Manage Rightbrain tasks - create, browse, run, update, and import task configurations.
   Use when user wants to work with Rightbrain AI tasks.
   Trigger with "rightbrain tasks", "rightbrain task", "manage tasks", "create task", "run task", or "browse tasks".
-allowed-tools: Bash(curl *), Bash(npx rightbrain*), Bash(node *), Bash(cat *), Bash([ *), Bash(mkdir *), Bash(jq *)
+allowed-tools: Bash(npx rightbrain*), Bash(cat *), Bash(mkdir *)
 ---
 
 # Rightbrain Task Manager
 
-A comprehensive skill for managing Rightbrain tasks. Create new tasks following best practices, browse and run existing tasks, update configurations, and export/import task definitions.
+A comprehensive skill for managing Rightbrain tasks. Create new tasks following best practices, browse and run existing tasks, update configurations, and import task definitions.
+
+> **CLI note:** All operations use the `npx rightbrain@latest` CLI, which handles authentication, token refresh, and org/project selection automatically. No manual token management is needed.
 
 ## Core Principles
 
@@ -29,34 +31,33 @@ Tasks return predictable, typed outputs. Use `output_format` to define the exact
 ### Context Tracking
 
 Throughout this workflow, you must track these values across phases:
-- `ACCESS_TOKEN` - Bearer token from `~/.rightbrain/credentials.json` (obtained via `npx rightbrain@latest login`)
 - `ORG_ID` - Selected organization UUID
 - `PROJECT_ID` - Selected project UUID
 - `TASK_ID` - Currently selected task UUID (when applicable)
 
-These values are used in all subsequent API calls. Store them in your reasoning context as you progress through the workflow.
+These values are used in subsequent CLI commands. Store them in your reasoning context as you progress through the workflow.
 
 ---
 
 ### Phase 0: Authentication & Setup
 
-Before any API operations, establish credentials and select the working context.
+Before any operations, establish credentials and select the working context. The CLI handles token management automatically.
 
 **Exit option:** At any point in this phase, if the user says "cancel", "exit", or "never mind", exit the skill gracefully with: "No problem! Run this skill again when you're ready to work with Rightbrain tasks."
 
-#### Step 1: Check for Existing Authentication
+#### Step 1: Check Authentication Status
 
-Check if the user has authenticated via the Rightbrain CLI:
+Check if the user is authenticated:
 
 ```bash
-[ -f ~/.rightbrain/credentials.json ] && echo "CREDENTIALS_FILE_EXISTS=yes" || echo "CREDENTIALS_FILE_EXISTS=no"
+npx rightbrain@latest whoami
 ```
 
-**If `CREDENTIALS_FILE_EXISTS=yes`:** Skip to Step 3 (Load credentials).
+**If command succeeds** (shows user info, org, and project): Authentication is valid. Extract the org and project from the output and proceed to Step 3.
 
-**If `CREDENTIALS_FILE_EXISTS=no`:** Go to Step 2 (First-time login).
+**If command fails** (error or "not logged in"): Go to Step 2 (Login).
 
-#### Step 2: First-Time Login
+#### Step 2: Login
 
 The user hasn't authenticated yet. Tell them what's about to happen, then run the login:
 
@@ -72,83 +73,23 @@ npx rightbrain@latest login --non-interactive
 
 This will open the user's browser to sign in. After authentication, credentials are stored in `~/.rightbrain/credentials.json`.
 
-**If login succeeds:** Proceed to Step 3 (Load credentials).
+**If login succeeds:** Run `npx rightbrain@latest whoami` to confirm, then proceed to Step 3.
 
-**If login fails** (command exits with an error, or credentials file doesn't exist after):
+**If login fails** (command exits with an error):
 ```
 Login didn't complete. You can try running `npx rightbrain@latest login` manually in your terminal, then let me know when you're done.
 ```
 Exit skill gracefully.
 
-#### Step 3: Load Credentials
+#### Step 3: Select Organization & Project
 
-Read the stored credentials and check token expiry:
+If `whoami` showed an org and project already selected, confirm with the user and skip to Step 4.
 
-```bash
-node -e "
-const c = JSON.parse(require('fs').readFileSync(process.env.HOME + '/.rightbrain/credentials.json', 'utf8'));
-const token = c.access_token || '';
-const expiresAt = c.expires_at || 0;
-const expired = expiresAt && Date.now() >= expiresAt - 300000 ? 'yes' : 'no';
-console.log('TOKEN_SET=' + (token ? 'yes' : 'no'));
-console.log('EXPIRED=' + expired);
-console.log('ORG_ID=' + (c.org_id || ''));
-console.log('PROJECT_ID=' + (c.project_id || ''));
-"
-```
-
-**If TOKEN_SET=no:** Something is wrong with the credentials file. Go to Step 2 (re-login).
-
-**If EXPIRED=yes:** Token has expired. Tell the user and re-authenticate:
-```
-Your session has expired. Let me refresh it.
-```
-```bash
-npx rightbrain@latest login --non-interactive
-```
-Then re-read credentials from Step 3.
-
-**If EXPIRED=no:** Token is valid. Extract the access token:
+If org or project need to be set, fetch the available organizations:
 
 ```bash
-node -e "console.log(JSON.parse(require('fs').readFileSync(process.env.HOME + '/.rightbrain/credentials.json', 'utf8')).access_token)"
+npx rightbrain@latest list-orgs --json
 ```
-
-Store this output as `ACCESS_TOKEN` in your context for all subsequent curl commands.
-
-#### Step 4: Validate Token & Determine Context
-
-Test the token and fetch organizations:
-
-```bash
-curl -s -X GET "https://app.rightbrain.ai/api/v1/org" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json"
-```
-
-**If 401 response:** Token is invalid despite not being expired. Tell the user and re-authenticate:
-```
-Your stored credentials appear to be invalid. Let me re-authenticate.
-```
-```bash
-npx rightbrain@latest login --non-interactive
-```
-Then restart from Step 3.
-
-**If 200 response:** Token is valid.
-
-Now check if org and project are already set from the credentials file:
-
-**If both ORG_ID and PROJECT_ID are present** (non-empty from Step 3):
-- Use them directly — skip org/project selection
-- Confirm to the user: `Using organization {org_name} and project {project_name} from your saved session.`
-- Proceed to Step 7 (Prefetch models)
-
-**If ORG_ID or PROJECT_ID is missing:** Proceed to Step 5 (Select organization).
-
-#### Step 5: Select Organization
-
-Parse the organization list from the Step 4 response.
 
 **If 0 organizations:**
 ```
@@ -169,14 +110,10 @@ Use AskUserQuestion:
 - Header: "Organization"
 - Options: List each org as "{name}" with description showing the org ID
 
-#### Step 6: Select Project
-
-Fetch projects for the selected organization:
+Then fetch projects for the selected organization:
 
 ```bash
-curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json"
+npx rightbrain@latest list-projects --json
 ```
 
 **If 0 projects:**
@@ -198,14 +135,18 @@ Use AskUserQuestion:
 - Header: "Project"
 - Options: List each project as "{name}" with description showing the project ID
 
-#### Step 7: Prefetch Available Models (for Create/Import flows)
+After selecting, set the CLI context:
+
+```bash
+npx rightbrain@latest switch-project --org-id {ORG_ID} --project-id {PROJECT_ID}
+```
+
+#### Step 4: Prefetch Available Models (for Create/Import flows)
 
 After org and project are established, fetch available models:
 
 ```bash
-curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/model" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json"
+npx rightbrain@latest list-models --json
 ```
 
 Store the model list in context. Key fields to note:
@@ -226,7 +167,7 @@ Use AskUserQuestion:
 - Header: "Action"
 - Options:
   - **Create new task** - Design a new Rightbrain task from scratch
-  - **Browse existing tasks** - View, run, update, or export tasks
+  - **Browse existing tasks** - View, run, or update tasks
   - **Import task from file** - Load a task configuration from JSON file
 
 **If "Create new task":** Proceed to [Task Design Workflow](#task-design-workflow-create-new-task)
@@ -242,9 +183,7 @@ Use AskUserQuestion:
 ### Fetch Tasks
 
 ```bash
-curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task?page_limit=50" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json"
+npx rightbrain@latest list-tasks --json
 ```
 
 ### Display Task List
@@ -280,7 +219,6 @@ Use AskUserQuestion:
 - Options:
   - **Run task** - Execute with input values
   - **Update task** - Modify prompts, model, or output format
-  - **Export task** - Save configuration to file
   - **View details** - See full task configuration
   - **Back** - Return to task list
 
@@ -291,9 +229,7 @@ Use AskUserQuestion:
 ### Step 1: Fetch Task Details
 
 ```bash
-curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task/{TASK_ID}" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json"
+npx rightbrain@latest get-task --task {TASK_ID} --json
 ```
 
 ### Step 2: Parse Input Variables
@@ -322,37 +258,10 @@ Please provide a value for {variable_name}:
 ### Step 4: Execute Task
 
 ```bash
-curl -s -X POST "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task/{TASK_ID}/run" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d @- << 'EOF'
-{
-  "task_input": {
-    "variable_1": "user_provided_value",
-    "variable_2": "user_provided_value"
-  }
-}
-EOF
+npx rightbrain@latest run-task --task {TASK_ID} --input variable_1="user_provided_value" --input variable_2="user_provided_value"
 ```
 
-**Critical:** All input parameters must be wrapped in a `task_input` object.
-
-**JSON payload best practices:**
-
-1. **Always use heredoc syntax** (`<< 'EOF'`) for JSON payloads - this is the most reliable method and handles special characters correctly.
-
-2. **Avoid inline `-d '...'`** - Shell escaping can cause "Invalid JSON" errors with quotes or special characters.
-
-3. **If `jq` is available**, it provides the safest JSON construction for complex values:
-   ```bash
-   # Alternative: Safe JSON construction with jq (if available)
-   jq -n \
-     --arg var1 "$USER_VALUE_1" \
-     --arg var2 "$USER_VALUE_2" \
-     '{task_input: {variable_1: $var1, variable_2: $var2}}' | \
-   curl -s -X POST "..." -H "..." -d @-
-   ```
-   Note: `jq` may not be installed in all environments - heredoc is the reliable fallback.
+**Critical:** Each input variable is passed as a separate `--input name=value` flag.
 
 ### Step 5: Display Results
 
@@ -387,9 +296,7 @@ Use AskUserQuestion:
 ### Step 1: Fetch Current Configuration
 
 ```bash
-curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task/{TASK_ID}" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json"
+npx rightbrain@latest get-task --task {TASK_ID} --json
 ```
 
 ### Step 2: Display Current Configuration
@@ -437,19 +344,10 @@ Based on selection, guide user through the specific update:
 
 **Important:** Updates create a new task revision. The new revision is **NOT** automatically active—you must explicitly activate it or run with the specific revision ID.
 
+Write the update fields to a YAML file, then submit:
+
 ```bash
-curl -s -X POST "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task/{TASK_ID}" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d @- << 'EOF'
-{
-  "system_prompt": "updated prompt...",
-  "user_prompt": "updated prompt...",
-  "output_format": {...},
-  "llm_model_id": "model-uuid",
-  "llm_config": {"temperature": 0.5}
-}
-EOF
+npx rightbrain@latest update-task --task {TASK_ID} --file updates.yaml
 ```
 
 Only include fields that were changed.
@@ -462,43 +360,25 @@ After creating a new revision, you have two options:
 
 **Option A: Activate the revision (recommended for permanent changes)**
 
-Update the task with `active_revisions` to make the new revision active:
+Submit the update with the `--activate` flag to make the new revision active immediately:
 
 ```bash
-curl -s -X POST "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task/{TASK_ID}" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d @- << 'EOF'
-{
-  "active_revisions": [
-    {"task_revision_id": "{NEW_REVISION_ID}", "weight": 1}
-  ]
-}
-EOF
+npx rightbrain@latest update-task --task {TASK_ID} --file updates.yaml --activate
 ```
 
-This makes the new revision the default for all future runs. The `weight` field supports traffic splitting (e.g., 0.5 for 50% of traffic).
+This makes the new revision the default for all future runs.
 
 **Option B: Run with specific revision (for testing)**
 
-Use the `revision_id` query parameter to test before activating:
+Use the `--revision` flag to test before activating:
 
 ```bash
-curl -s -X POST "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task/{TASK_ID}/run?revision_id={NEW_REVISION_ID}" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d @- << 'EOF'
-{
-  "task_input": {
-    "variable_1": "value"
-  }
-}
-EOF
+npx rightbrain@latest run-task --task {TASK_ID} --revision {NEW_REVISION_ID} --input variable_1="value"
 ```
 
 **Why this matters:**
 - Creating a new revision does NOT automatically make it active
-- Without activating or specifying `revision_id`, the task runs using the previously active revision
+- Without activating or specifying `--revision`, the task runs using the previously active revision
 - Use Option B to test, then Option A to make permanent
 
 ### Step 6: Confirm Update
@@ -512,81 +392,6 @@ Testing the update now with the new revision...
 ```
 
 Then immediately run the task with the new revision to verify the changes work as expected.
-
----
-
-## Export Task Configuration
-
-### Step 1: Fetch Task Details
-
-```bash
-curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task/{TASK_ID}?include_tests=false" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json"
-```
-
-### Step 2: Prepare Export
-
-Extract the active revision configuration and transform for portability.
-
-**Fields to EXCLUDE (security/portability):**
-- `access_token` - Security risk if exported
-- `id`, `task_id` - Will be regenerated on import
-- `created`, `modified` - Timestamps
-- `collection_id` - RAG collection (project-specific)
-- `task_forwarder_id` - Task forwarding (project-specific)
-
-**Fields to INCLUDE:**
-- `name`, `description`, `enabled`
-- `system_prompt`, `user_prompt`
-- `output_modality`, `output_format`
-- `llm_model_id` → Convert to `llm_model_name` for portability
-- `llm_config`
-- `input_processors`
-- `image_required`
-
-### Step 3: Generate Export JSON
-
-```json
-{
-  "_export_version": "1.0",
-  "_exported_at": "2026-01-23T12:00:00Z",
-  "_source_project": "Project Name",
-  "_notes": "RAG and task forwarding settings excluded - reconfigure after import if needed",
-
-  "name": "Task Name",
-  "description": "Task description",
-  "enabled": true,
-  "output_modality": "json",
-  "system_prompt": "...",
-  "user_prompt": "...",
-  "output_format": {...},
-  "llm_model_name": "gpt-4o",
-  "llm_config": {"temperature": 0.3},
-  "input_processors": [...],
-  "image_required": false
-}
-```
-
-### Step 4: Write Export File
-
-Ask user for export path:
-```
-Where should I save the task configuration?
-Default: ./tasks/{task-name-kebab}.json
-```
-
-Convert task name to kebab-case for filename (lowercase, spaces to hyphens).
-
-Create directory if needed (`./tasks/`), then write the file.
-
-Confirm:
-```
-Task exported successfully!
-File: ./tasks/{filename}.json
-
-You can import this task to any project using the import function.
-```
 
 ---
 
@@ -614,9 +419,7 @@ If validation fails, show specific error and exit.
 The export contains `llm_model_name`. Fetch available models and find matching UUID:
 
 ```bash
-curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/model" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json"
+npx rightbrain@latest list-models --json
 ```
 
 Search for model by name (case-insensitive match on `name` or `internal_name`).
@@ -634,10 +437,10 @@ Use AskUserQuestion to let user select an alternative model from available optio
 Fetch existing tasks and check if name already exists:
 
 ```bash
-curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task?name={task_name}" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json"
+npx rightbrain@latest list-tasks --json
 ```
+
+Filter the results to check for duplicate names.
 
 **If duplicate exists:**
 Use AskUserQuestion:
@@ -650,29 +453,12 @@ Use AskUserQuestion:
 
 ### Step 5: Create Task
 
-Transform import config to TaskCreate format:
+Transform import config to a YAML file for task creation:
 - Replace `llm_model_name` with resolved `llm_model_id`
 - Remove export metadata fields (`_export_version`, `_exported_at`, `_source_project`, `_notes`)
 
 ```bash
-curl -s -X POST "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d @- << 'EOF'
-{
-  "name": "Task Name",
-  "description": "...",
-  "enabled": true,
-  "system_prompt": "...",
-  "user_prompt": "...",
-  "output_modality": "json",
-  "output_format": {...},
-  "llm_model_id": "resolved-model-uuid",
-  "llm_config": {...},
-  "input_processors": [...],
-  "image_required": false
-}
-EOF
+npx rightbrain@latest create-task --file task.yaml --direct
 ```
 
 ### Step 6: Confirm Import
@@ -715,10 +501,9 @@ Start by understanding what the user wants to accomplish:
 **Single responsibility check:**
 If the task goal contains "and then" or "also", suggest splitting:
 ```
-❌ "Classify the email AND extract key dates AND draft a reply"
-✅ Task 1: "Classify email intent"
-✅ Task 2: "Extract dates from email"
-✅ Task 3: "Draft reply based on classification"
+Task 1: "Classify email intent"
+Task 2: "Extract dates from email"
+Task 3: "Draft reply based on classification"
 ```
 
 ### Phase 2: Input Design
@@ -885,9 +670,7 @@ Since we already have credentials from Phase 0, proceed directly to deployment.
 **Step 1: Fetch available models**
 
 ```bash
-curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/model" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json"
+npx rightbrain@latest list-models --json
 ```
 
 Parse the response to find the best model for the task type. Look for:
@@ -897,16 +680,10 @@ Parse the response to find the best model for the task type. Look for:
 
 **Step 2: Create the task**
 
+Write the complete task configuration to a YAML file, then create it:
+
 ```bash
-curl -s -X POST "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d @- << 'EOF'
-{
-  "name": "Task Name",
-  ...complete task configuration...
-}
-EOF
+npx rightbrain@latest create-task --file task.yaml --direct
 ```
 
 **Step 3: Report results**
@@ -919,7 +696,7 @@ On success, tell the user:
 
 On failure, parse the error and help fix it:
 - 400 errors: Show validation message, suggest fix
-- 400 `duplicate_task_name`: Use a unique task name (add version suffix like "v2")
+- 400 `duplicate_task_name`: Task name already exists - use unique name (add version suffix like "v2")
 - 401 errors: Session expired — re-run `npx rightbrain@latest login`
 - 403 errors: Permission issue
 
@@ -994,17 +771,8 @@ Credentials are obtained via `npx rightbrain@latest login` and stored in `~/.rig
 |------------|-------|----------|
 | Connection timeout | Network issue or server unreachable | Check internet connection, retry in 10 seconds |
 | Connection refused | Server down or wrong URL | Verify API URL is correct, check Rightbrain status |
-| SSL/TLS error | Certificate issue | Never use `-k` or `--insecure` flags - report to Rightbrain support |
+| SSL/TLS error | Certificate issue | Report to Rightbrain support |
 | Empty response | Server returned no data | Retry request, check API status if persistent |
-
-**Timeout handling:** Add `--connect-timeout 10 --max-time 30` to curl commands for long-running requests:
-
-```bash
-curl -s --connect-timeout 10 --max-time 30 -X POST "..." \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '...'
-```
 
 **Retry strategy:** For 429 and 5xx errors, wait and retry up to 3 times with exponential backoff (10s, 30s, 60s).
 
