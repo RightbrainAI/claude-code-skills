@@ -1,7 +1,7 @@
 ---
 name: rightbrain-tasks
 description: |
-  Manage Rightbrain tasks - create, browse, run, update, export, and import task configurations.
+  Manage Rightbrain tasks - create, browse, run, update, and import task configurations.
   Use when user wants to work with Rightbrain AI tasks.
   Trigger with "rightbrain tasks", "rightbrain task", "manage tasks", "create task", "run task", or "browse tasks".
 allowed-tools: Bash(npx rightbrain*), Bash(cat *), Bash(mkdir *)
@@ -9,7 +9,7 @@ allowed-tools: Bash(npx rightbrain*), Bash(cat *), Bash(mkdir *)
 
 # Rightbrain Task Manager
 
-A comprehensive skill for managing Rightbrain tasks. Create new tasks following best practices, browse and run existing tasks, update configurations, and export/import task definitions.
+A comprehensive skill for managing Rightbrain tasks. Create new tasks following best practices, browse and run existing tasks, update configurations, and import task definitions.
 
 > **CLI note:** All operations use the `npx rightbrain@latest` CLI, which handles authentication, token refresh, and org/project selection automatically. No manual token management is needed.
 
@@ -167,7 +167,7 @@ Use AskUserQuestion:
 - Header: "Action"
 - Options:
   - **Create new task** - Design a new Rightbrain task from scratch
-  - **Browse existing tasks** - View, run, update, or export tasks
+  - **Browse existing tasks** - View, run, or update tasks
   - **Import task from file** - Load a task configuration from JSON file
 
 **If "Create new task":** Proceed to [Task Design Workflow](#task-design-workflow-create-new-task)
@@ -219,7 +219,6 @@ Use AskUserQuestion:
 - Options:
   - **Run task** - Execute with input values
   - **Update task** - Modify prompts, model, or output format
-  - **Export task** - Save configuration to file
   - **View details** - See full task configuration
   - **Back** - Return to task list
 
@@ -393,34 +392,6 @@ Testing the update now with the new revision...
 ```
 
 Then immediately run the task with the new revision to verify the changes work as expected.
-
----
-
-## Export Task Configuration
-
-### Step 1: Export Task
-
-```bash
-npx rightbrain@latest export-task --task {TASK_ID} --output ./tasks/{task-name-kebab}.json
-```
-
-The CLI automatically:
-- Fetches the task and its active revision
-- Strips internal fields (IDs, timestamps)
-- Converts `llm_model_id` to `llm_model_name` for portability
-- Adds export metadata (`_export_version`, `_exported_at`, `_source_project`)
-
-### Step 2: Confirm Export
-
-Ask user for export path (default: `./tasks/{task-name-kebab}.json`). Convert task name to kebab-case for filename (lowercase, spaces to hyphens).
-
-Confirm:
-```
-Task exported successfully!
-File: ./tasks/{filename}.json
-
-You can import this task to any project using the import function.
-```
 
 ---
 
