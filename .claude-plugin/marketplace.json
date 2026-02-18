@@ -1,0 +1,25 @@
+{
+  "name": "rightbrain-skills",
+  "owner": {
+    "name": "Rightbrain AI",
+    "email": "platform@rightbrain.ai"
+  },
+  "metadata": {
+    "description": "Official Claude Code plugins for Rightbrain AI"
+  },
+  "plugins": [
+    {
+      "name": "rightbrain-tasks",
+      "source": "./plugins/rightbrain-tasks",
+      "description": "Complete task manager for the Rightbrain API. Create, browse, run, update, export, and import AI tasks.",
+      "version": "1.0.0",
+      "author": {
+        "name": "Rightbrain AI"
+      },
+      "homepage": "https://rightbrain.ai",
+      "repository": "https://github.com/RightbrainAI/claude-code-skills",
+      "license": "MIT",
+      "keywords": ["rightbrain", "ai", "tasks", "llm", "api"]
+    }
+  ]
+}

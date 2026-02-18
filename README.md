@@ -19,7 +19,7 @@ Run these commands inside Claude Code:
 
 ```
 /plugin marketplace add https://github.com/RightbrainAI/claude-code-skills
-/plugin install rightbrain-tasks
+/plugin install rightbrain-tasks@rightbrain-skills
 ```
 
 That's it! The skill will handle authentication automatically when you first use it.
@@ -28,7 +28,7 @@ That's it! The skill will handle authentication automatically when you first use
 
 ```bash
 git clone https://github.com/RightbrainAI/claude-code-skills.git
-cp -r claude-code-skills/skills/rightbrain-tasks ~/.claude/skills/
+cp -r claude-code-skills/plugins/rightbrain-tasks/skills/rightbrain-tasks ~/.claude/skills/
 npx rightbrain@latest login
 ```
 
@@ -89,23 +89,29 @@ Say any of these to activate the skill:
 
 ```
 claude-code-skills/
+├── .claude-plugin/
+│   └── marketplace.json                # Plugin marketplace catalog
 ├── README.md
 ├── LICENSE
-└── skills/
-    └── rightbrain-tasks/
-        ├── SKILL.md                    # Main skill file
-        ├── assets/
-        │   ├── task-template.json      # Complete task template
-        │   ├── export-schema-example.json
-        │   └── examples/
-        │       ├── classification.md
-        │       ├── extraction.md
-        │       └── generation.md
-        └── references/
-            ├── task-components.md      # Schema reference
-            ├── output-formats.md       # Type system docs
-            ├── prompt-patterns.md      # Prompt templates
-            └── image-generation.md     # Image task guide
+└── plugins/
+    └── rightbrain-tasks/               # Plugin root
+        ├── .claude-plugin/
+        │   └── plugin.json             # Plugin manifest
+        └── skills/
+            └── rightbrain-tasks/       # Skill directory
+                ├── SKILL.md            # Main skill file
+                ├── assets/
+                │   ├── task-template.json
+                │   ├── export-schema-example.json
+                │   └── examples/
+                │       ├── classification.md
+                │       ├── extraction.md
+                │       └── generation.md
+                └── references/
+                    ├── task-components.md
+                    ├── output-formats.md
+                    ├── prompt-patterns.md
+                    └── image-generation.md
 ```
 
 ## Contributing
