@@ -3,13 +3,19 @@
 [![Claude Code](https://img.shields.io/badge/Claude%20Code-Skills-blueviolet)](https://claude.ai/claude-code)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-Official Claude Code skills for [Rightbrain AI](https://rightbrain.ai) - the platform for building, deploying, and managing AI tasks.
+Official Claude Code plugin for [Rightbrain AI](https://rightbrain.ai) — the platform that lets you create, deploy, and manage AI tasks as simple API calls.
+
+## What is Rightbrain?
+
+Rightbrain lets you build **Tasks** — custom AI functions that take specific inputs and return structured outputs. Each task combines a language model with instructions and an output schema, making AI reliable enough for production. No models to host, no prompt versioning to build — just define a task and call it via API.
+
+Use cases include classification, data extraction, content generation, image creation, and more. [Learn more](https://docs.rightbrain.ai/docs/getting-started/introduction)
 
 ## What's Included
 
-| Skill | Description |
-|-------|-------------|
-| **rightbrain-tasks** | Complete task manager for the Rightbrain API. Create, browse, run, update, export, and import AI tasks. |
+| Plugin | Description |
+|--------|-------------|
+| **rightbrain-tasks** | Complete task manager for the Rightbrain API. Create, browse, run, update, export, and import AI tasks — all from Claude Code. |
 
 ## Quick Start
 
