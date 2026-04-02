@@ -1,88 +1,71 @@
 ---
 name: rightbrain-tasks
 description: |
-  Manage Rightbrain tasks - create, browse, run, update, export, and import task configurations.
-  Use when user wants to work with Rightbrain AI tasks.
-  Trigger with "rightbrain tasks", "rightbrain task", "manage tasks", "create task", "run task", or "browse tasks".
+  Complete manager for the Rightbrain API. Create and manage Tasks, TaskAgents, Skills, Integrations, and MCP Servers.
+  Trigger with "rightbrain tasks", "rightbrain agent", "rightbrain skill", "rightbrain integration",
+  "create task", "create agent", "run agent", "browse tasks", "manage skills", "connect integration",
+  "switch to staging", "use staging", "staging environment", "use production".
 allowed-tools: Bash(curl *), Bash(npx rightbrain*), Bash(node *), Bash(cat *), Bash([ *), Bash(mkdir *), Bash(jq *)
 ---
 
-# Rightbrain Task Manager
+# Rightbrain Platform Manager
 
-A comprehensive skill for managing Rightbrain tasks. Create new tasks following best practices, browse and run existing tasks, update configurations, and export/import task definitions.
+Manage the four Rightbrain primitives and MCP Servers from the command line.
 
-## Core Principles
+## The Four Primitives
 
-### 1. Stateless Execution
-Every task run is independent—no memory of previous runs. All context must be passed as input.
+| Primitive | What It Is | When to Use |
+|-----------|-----------|-------------|
+| **Task** | A stateless AI function: input in, structured output out | Single-step operations: classify, extract, generate, analyze |
+| **TaskAgent** | An autonomous agent that orchestrates multiple tools | Multi-step workflows, tool chaining, conversations |
+| **Skill** | A declarative instruction bundle for agents | Teaching agents domain knowledge, policies, procedures |
+| **Integration** | An OAuth connection to external services | Connecting agents to Google Workspace (Sheets, Docs, Gmail, etc.) |
+| **MCP Server** | An external tool provider via Model Context Protocol | Connecting agents to databases, internal APIs, SaaS platforms |
 
-### 2. Single Responsibility
-One task does one thing well. If your description contains "and then" or "also", split it into multiple tasks.
-
-### 3. Structured Outputs
-Tasks return predictable, typed outputs. Use `output_format` to define the exact structure.
-
----
-
-## Workflow
-
-### Context Tracking
-
-Throughout this workflow, you must track these values across phases:
-- `ACCESS_TOKEN` - Bearer token from `~/.rightbrain/credentials.json` (obtained via `npx rightbrain@latest login`)
-- `ORG_ID` - Selected organization UUID
-- `PROJECT_ID` - Selected project UUID
-- `TASK_ID` - Currently selected task UUID (when applicable)
-
-These values are used in all subsequent API calls. Store them in your reasoning context as you progress through the workflow.
+**Decision guide:**
+- Need a single AI call with structured output? --> **Task**
+- Need multi-step reasoning or tool orchestration? --> **TaskAgent**
+- Need to teach an agent domain expertise? --> **Skill** (attached to an agent)
+- Need to read/write Google Workspace data? --> **Integration** (attached to an agent)
+- Need to call tools on an external server? --> **MCP Server** (attached to an agent)
+- Not sure which primitive to use? --> See [Architecture Guide](references/architecture-guide.md)
 
 ---
 
-### Phase 0: Authentication & Setup
+## Phase 0: Authentication & Setup
 
-Before any API operations, establish credentials and select the working context.
+### Environment Selection
 
-**Exit option:** At any point in this phase, if the user says "cancel", "exit", or "never mind", exit the skill gracefully with: "No problem! Run this skill again when you're ready to work with Rightbrain tasks."
+The skill supports two environments. Default is **production**.
 
-#### Step 1: Check for Existing Authentication
+| Environment | API Base URL | When to use |
+|---|---|---|
+| **Production** | `https://app.rightbrain.ai/api/v1` | Default. Live data, real credits. |
+| **Staging** | `https://stag.leftbrain.me/api/v1` | Testing new features, development work. |
 
-Check if the user has authenticated via the Rightbrain CLI:
+If the user says "use staging", "staging", or "stag" → set `API_BASE` to `https://stag.leftbrain.me/api/v1` and confirm: "Switched to **staging** environment (stag.leftbrain.me)"
+
+If the user says "use production", "production", or "prod" → set `API_BASE` to `https://app.rightbrain.ai/api/v1` and confirm: "Using **production** environment (app.rightbrain.ai)"
+
+If unspecified, default to production: `API_BASE=https://app.rightbrain.ai/api/v1`
+
+Store `API_BASE` in context and use it for ALL subsequent curl commands.
+
+**Exit option:** At any point, if the user says "cancel", "exit", or "never mind", exit gracefully.
+
+### Step 1: Check for Existing Credentials
 
 ```bash
 [ -f ~/.rightbrain/credentials.json ] && echo "CREDENTIALS_FILE_EXISTS=yes" || echo "CREDENTIALS_FILE_EXISTS=no"
 ```
 
-**If `CREDENTIALS_FILE_EXISTS=yes`:** Skip to Step 3 (Load credentials).
-
-**If `CREDENTIALS_FILE_EXISTS=no`:** Go to Step 2 (First-time login).
-
-#### Step 2: First-Time Login
-
-The user hasn't authenticated yet. Tell them what's about to happen, then run the login:
-
-```
-You're not authenticated with Rightbrain yet. Let's get you set up!
-
-I'll open your browser to sign in — no API keys needed.
-```
-
+If no credentials file, run first-time login:
 ```bash
 npx rightbrain@latest login --non-interactive
 ```
+This opens the browser to sign in. If login fails, tell the user to try `npx rightbrain@latest login` manually.
 
-This will open the user's browser to sign in. After authentication, credentials are stored in `~/.rightbrain/credentials.json`.
-
-**If login succeeds:** Proceed to Step 3 (Load credentials).
-
-**If login fails** (command exits with an error, or credentials file doesn't exist after):
-```
-Login didn't complete. You can try running `npx rightbrain@latest login` manually in your terminal, then let me know when you're done.
-```
-Exit skill gracefully.
-
-#### Step 3: Load Credentials
-
-Read the stored credentials and check token expiry:
+### Step 2: Load and Validate Token
 
 ```bash
 node -e "
@@ -97,1007 +80,342 @@ console.log('PROJECT_ID=' + (c.project_id || ''));
 "
 ```
 
-**If TOKEN_SET=no:** Something is wrong with the credentials file. Go to Step 2 (re-login).
+If TOKEN_SET=no or EXPIRED=yes, re-authenticate via `npx rightbrain@latest login --non-interactive`, then re-read.
 
-**If EXPIRED=yes:** Token has expired. Tell the user and re-authenticate:
-```
-Your session has expired. Let me refresh it.
-```
-```bash
-npx rightbrain@latest login --non-interactive
-```
-Then re-read credentials from Step 3.
-
-**If EXPIRED=no:** Token is valid. Extract the access token:
-
+Extract the access token:
 ```bash
 node -e "console.log(JSON.parse(require('fs').readFileSync(process.env.HOME + '/.rightbrain/credentials.json', 'utf8')).access_token)"
 ```
 
-Store this output as `ACCESS_TOKEN` in your context for all subsequent curl commands.
+Store as `ACCESS_TOKEN` for all subsequent API calls.
 
-#### Step 4: Validate Token & Determine Context
+### Step 3: Validate Token & Select Context
 
-Test the token and fetch organizations:
-
+Test the token by fetching organizations:
 ```bash
-curl -s -X GET "https://app.rightbrain.ai/api/v1/org" \
+curl -s -X GET "{API_BASE}/org" \
   -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json"
 ```
 
-**If 401 response:** Token is invalid despite not being expired. Tell the user and re-authenticate:
-```
-Your stored credentials appear to be invalid. Let me re-authenticate.
-```
-```bash
-npx rightbrain@latest login --non-interactive
-```
-Then restart from Step 3.
+If 401, re-authenticate. If 200, proceed.
 
-**If 200 response:** Token is valid.
+**If ORG_ID and PROJECT_ID already set** from credentials: use them directly, confirm to user, skip selection.
 
-Now check if org and project are already set from the credentials file:
-
-**If both ORG_ID and PROJECT_ID are present** (non-empty from Step 3):
-- Use them directly — skip org/project selection
-- Confirm to the user: `Using organization {org_name} and project {project_name} from your saved session.`
-- Proceed to Step 7 (Prefetch models)
-
-**If ORG_ID or PROJECT_ID is missing:** Proceed to Step 5 (Select organization).
-
-#### Step 5: Select Organization
-
-Parse the organization list from the Step 4 response.
-
-**If 0 organizations:**
-```
-You don't have any organizations yet.
-Create one at: https://app.rightbrain.ai
-```
-Exit skill gracefully.
-
-**If 1 organization:**
-Auto-select and confirm:
-```
-Using your organization: {org_name} ({org_id})
-```
-
-**If multiple organizations:**
-Use AskUserQuestion:
-- Question: "Which organization do you want to work with?"
-- Header: "Organization"
-- Options: List each org as "{name}" with description showing the org ID
-
-#### Step 6: Select Project
-
-Fetch projects for the selected organization:
+**Otherwise:** Select org (auto-select if only one, ask if multiple), then fetch and select project the same way.
 
 ```bash
-curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project" \
+curl -s -X GET "{API_BASE}/org/{ORG_ID}/project" \
   -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json"
 ```
 
-**If 0 projects:**
-```
-This organization has no projects yet.
-Create one at: https://app.rightbrain.ai
-```
-Exit skill gracefully.
-
-**If 1 project:**
-Auto-select and confirm:
-```
-Using your project: {project_name} ({project_id})
-```
-
-**If multiple projects:**
-Use AskUserQuestion:
-- Question: "Which project do you want to work with?"
-- Header: "Project"
-- Options: List each project as "{name}" with description showing the project ID
-
-#### Step 7: Prefetch Available Models (for Create/Import flows)
-
-After org and project are established, fetch available models:
+### Step 4: Prefetch Models
 
 ```bash
-curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/model" \
+curl -s -X GET "{API_BASE}/org/{ORG_ID}/project/{PROJECT_ID}/model" \
   -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json"
 ```
 
-Store the model list in context. Key fields to note:
-- `id`: UUID for `llm_model_id`
-- `name`: Human-readable name (e.g., "GPT-4o", "Claude 3.5 Sonnet")
-- `supports_vision`: Required for image tasks
-
-This prefetch prevents users from designing a task only to discover their preferred model isn't available.
+Store model list in context. Key fields: `id`, `name`, `supports_vision`, `supports_image_output`.
 
 ---
 
-### Phase 1: Choose Action
+## Phase 1: Choose Action
 
-After selecting organization and project, present the main action menu.
+Present the main action menu:
 
-Use AskUserQuestion:
-- Question: "What would you like to do?"
-- Header: "Action"
-- Options:
-  - **Create new task** - Design a new Rightbrain task from scratch
-  - **Browse existing tasks** - View, run, update, or export tasks
-  - **Import task from file** - Load a task configuration from JSON file
+- **Create new task** -- Design a new Rightbrain task from scratch
+- **Browse existing tasks** -- View, run, update, or export tasks
+- **Import task from file** -- Load a task configuration from JSON
+- **Create agent** -- Build a TaskAgent with tools, skills, and integrations
+- **Manage agents** -- List, update, run, or delete agents
+- **Manage skills** -- Browse catalog, create, or update skills
+- **Connect integration** -- Set up a Google Workspace integration
+- **Add MCP server** -- Connect an external tool provider
 
-**If "Create new task":** Proceed to [Task Design Workflow](#task-design-workflow-create-new-task)
-
-**If "Browse existing tasks":** Proceed to [Task Browser](#task-browser)
-
-**If "Import task from file":** Proceed to [Import Task Configuration](#import-task-configuration)
+Route to the appropriate reference file based on selection.
 
 ---
 
-## Task Browser
+## Task Quick-Start
 
-### Fetch Tasks
+For full task workflows, see [Tasks Reference](references/tasks.md).
 
-```bash
-curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task?page_limit=50" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json"
-```
+### Create a Task
 
-### Display Task List
-
-**If 0 tasks:**
-```
-This project has no tasks yet. Would you like to create one?
-```
-Offer to proceed to task creation.
-
-**If tasks exist:**
-Format each task as a summary for display:
-
-```
-{name}
-  {description (first 80 chars)}...
-  Modality: {output_modality} | Status: {enabled ? "Enabled" : "Disabled"}
-```
-
-Use AskUserQuestion to let user select a task:
-- Question: "Select a task to manage:"
-- Header: "Task"
-- Options: List each task with name as label and summary as description
-- Include a final option: "Create new task" - Start fresh with a new task design
-
-### Task Actions
-
-After selecting a task, present the action menu:
-
-Use AskUserQuestion:
-- Question: "What would you like to do with '{task_name}'?"
-- Header: "Task action"
-- Options:
-  - **Run task** - Execute with input values
-  - **Update task** - Modify prompts, model, or output format
-  - **Export task** - Save configuration to file
-  - **View details** - See full task configuration
-  - **Back** - Return to task list
-
----
-
-## Run Task Flow
-
-### Step 1: Fetch Task Details
+1. Discover what the user wants (see Phase 1-3 in tasks reference)
+2. Design the output schema
+3. Deploy:
 
 ```bash
-curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task/{TASK_ID}" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json"
-```
-
-### Step 2: Parse Input Variables
-
-Extract the active revision from the response (look for revision with `active: true`).
-
-Parse the `user_prompt` for `{variable_name}` patterns using regex:
-```
-\{([a-zA-Z_][a-zA-Z0-9_]*)\}
-```
-
-Exclude common template patterns that aren't user inputs (like `{variable_1}` placeholders in documentation).
-
-### Step 3: Collect Input Values
-
-For each input variable found, ask the user to provide a value:
-
-```
-The task requires the following inputs:
-
-{variable_name}: [inferred description from prompt context]
-
-Please provide a value for {variable_name}:
-```
-
-### Step 4: Execute Task
-
-```bash
-curl -s -X POST "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task/{TASK_ID}/run" \
+curl -s -X POST "{API_BASE}/org/{ORG_ID}/project/{PROJECT_ID}/task" \
   -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
   -d @- << 'EOF'
 {
-  "task_input": {
-    "variable_1": "user_provided_value",
-    "variable_2": "user_provided_value"
-  }
-}
-EOF
-```
-
-**Critical:** All input parameters must be wrapped in a `task_input` object.
-
-**JSON payload best practices:**
-
-1. **Always use heredoc syntax** (`<< 'EOF'`) for JSON payloads - this is the most reliable method and handles special characters correctly.
-
-2. **Avoid inline `-d '...'`** - Shell escaping can cause "Invalid JSON" errors with quotes or special characters.
-
-3. **If `jq` is available**, it provides the safest JSON construction for complex values:
-   ```bash
-   # Alternative: Safe JSON construction with jq (if available)
-   jq -n \
-     --arg var1 "$USER_VALUE_1" \
-     --arg var2 "$USER_VALUE_2" \
-     '{task_input: {variable_1: $var1, variable_2: $var2}}' | \
-   curl -s -X POST "..." -H "..." -d @-
-   ```
-   Note: `jq` may not be installed in all environments - heredoc is the reliable fallback.
-
-### Step 5: Display Results
-
-On success, display:
-- The task output (`response` field)
-- Token usage summary
-- Credits consumed
-- Link to view in dashboard: `https://app.rightbrain.ai/task/{task_id}/run?id={task_run_id}`
-
-On failure, show the error and suggest fixes based on the error type.
-
-### Step 6: Post-Run Menu
-
-Use AskUserQuestion:
-- Question: "Task completed. What next?"
-- Header: "Next action"
-- Options:
-  - **Run again** - Same task with new inputs
-  - **Different task** - Return to task browser
-  - **Done** - Exit skill
-
-**If "Run again":** Return to Step 3 (Collect Input Values)
-
-**If "Different task":** Return to [Task Browser](#task-browser)
-
-**If "Done":** Exit skill with summary of what was accomplished
-
----
-
-## Update Existing Task
-
-### Step 1: Fetch Current Configuration
-
-```bash
-curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task/{TASK_ID}" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json"
-```
-
-### Step 2: Display Current Configuration
-
-Extract the active revision and show:
-
-```
-Current Task Configuration:
-━━━━━━━━━━━━━━━━━━━━━━━━━━━
-Name: {name}
-Description: {description}
-Model: {llm_model.name}
-Temperature: {llm_config.temperature}
-Output Modality: {output_modality}
-
-System Prompt:
-{system_prompt}
-
-User Prompt:
-{user_prompt}
-
-Output Format:
-{output_format as formatted JSON}
-```
-
-### Step 3: Collect Updates
-
-Use AskUserQuestion:
-- Question: "What would you like to update?"
-- Header: "Update"
-- Options:
-  - **System prompt** - Modify the AI's role and behavior
-  - **User prompt** - Modify instructions and input variables
-  - **Output format** - Change the structured output schema
-  - **Model settings** - Change model or temperature
-  - **Multiple fields** - I'll specify several changes
-  - **Cancel** - Return without changes
-
-Based on selection, guide user through the specific update:
-- For prompts: Show current value, ask for new value
-- For model: Fetch available models and let user choose
-- For output format: Guide through schema modification
-
-### Step 4: Submit Update
-
-**Important:** Updates create a new task revision. The new revision is **NOT** automatically active—you must explicitly activate it or run with the specific revision ID.
-
-```bash
-curl -s -X POST "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task/{TASK_ID}" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d @- << 'EOF'
-{
-  "system_prompt": "updated prompt...",
-  "user_prompt": "updated prompt...",
-  "output_format": {...},
+  "name": "Email Classifier",
+  "description": "Classifies emails by intent and urgency",
+  "enabled": true,
+  "output_modality": "json",
+  "system_prompt": "You are an email analyst specializing in business communication.",
+  "user_prompt": "## Goal\nClassify the email by intent.\n\n## Input\n{email_content}: The email to classify\n\n## Instructions\n1. Identify the primary intent\n2. Assess urgency\n3. Extract action items",
   "llm_model_id": "model-uuid",
-  "llm_config": {"temperature": 0.5}
+  "llm_config": {"temperature": 0.2},
+  "output_format": {
+    "intent": {"type": "str", "options": ["inquiry", "complaint", "request", "feedback"]},
+    "urgency": {"type": "str", "options": ["low", "medium", "high"]},
+    "action_items": {"type": "list", "item_type": "str"}
+  }
 }
 EOF
 ```
 
-Only include fields that were changed.
-
-The response will include the new revision with `"active": false`. Note the new `revision_id`.
-
-### Step 5: Activate the New Revision
-
-After creating a new revision, you have two options:
-
-**Option A: Activate the revision (recommended for permanent changes)**
-
-Update the task with `active_revisions` to make the new revision active:
+### Run a Task
 
 ```bash
-curl -s -X POST "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task/{TASK_ID}" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d @- << 'EOF'
-{
-  "active_revisions": [
-    {"task_revision_id": "{NEW_REVISION_ID}", "weight": 1}
-  ]
-}
-EOF
-```
-
-This makes the new revision the default for all future runs. The `weight` field supports traffic splitting (e.g., 0.5 for 50% of traffic).
-
-**Option B: Run with specific revision (for testing)**
-
-Use the `revision_id` query parameter to test before activating:
-
-```bash
-curl -s -X POST "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task/{TASK_ID}/run?revision_id={NEW_REVISION_ID}" \
+curl -s -X POST "{API_BASE}/org/{ORG_ID}/project/{PROJECT_ID}/task/{TASK_ID}/run" \
   -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
   -d @- << 'EOF'
 {
   "task_input": {
-    "variable_1": "value"
+    "email_content": "Hi, I need to cancel my subscription by Friday..."
   }
 }
 EOF
 ```
 
-**Why this matters:**
-- Creating a new revision does NOT automatically make it active
-- Without activating or specifying `revision_id`, the task runs using the previously active revision
-- Use Option B to test, then Option A to make permanent
-
-### Step 6: Confirm Update
-
-On success:
-```
-Task updated successfully!
-New revision ID: {revision_id}
-
-Testing the update now with the new revision...
-```
-
-Then immediately run the task with the new revision to verify the changes work as expected.
+**Critical:** All inputs must be wrapped in `task_input`.
 
 ---
 
-## Export Task Configuration
+## Agent Quick-Start
 
-### Step 1: Fetch Task Details
+For full agent workflows, see [Agents Reference](references/agents.md).
 
-```bash
-curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task/{TASK_ID}?include_tests=false" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json"
-```
-
-### Step 2: Prepare Export
-
-Extract the active revision configuration and transform for portability.
-
-**Fields to EXCLUDE (security/portability):**
-- `access_token` - Security risk if exported
-- `id`, `task_id` - Will be regenerated on import
-- `created`, `modified` - Timestamps
-- `collection_id` - RAG collection (project-specific)
-- `task_forwarder_id` - Task forwarding (project-specific)
-
-**Fields to INCLUDE:**
-- `name`, `description`, `enabled`
-- `system_prompt`, `user_prompt`
-- `output_modality`, `output_format`
-- `llm_model_id` → Convert to `llm_model_name` for portability
-- `llm_config`
-- `input_processors`
-- `image_required`
-
-### Step 3: Generate Export JSON
-
-```json
-{
-  "_export_version": "1.0",
-  "_exported_at": "2026-01-23T12:00:00Z",
-  "_source_project": "Project Name",
-  "_notes": "RAG and task forwarding settings excluded - reconfigure after import if needed",
-
-  "name": "Task Name",
-  "description": "Task description",
-  "enabled": true,
-  "output_modality": "json",
-  "system_prompt": "...",
-  "user_prompt": "...",
-  "output_format": {...},
-  "llm_model_name": "gpt-4o",
-  "llm_config": {"temperature": 0.3},
-  "input_processors": [...],
-  "image_required": false
-}
-```
-
-### Step 4: Write Export File
-
-Ask user for export path:
-```
-Where should I save the task configuration?
-Default: ./tasks/{task-name-kebab}.json
-```
-
-Convert task name to kebab-case for filename (lowercase, spaces to hyphens).
-
-Create directory if needed (`./tasks/`), then write the file.
-
-Confirm:
-```
-Task exported successfully!
-File: ./tasks/{filename}.json
-
-You can import this task to any project using the import function.
-```
-
----
-
-## Import Task Configuration
-
-### Step 1: Read Import File
-
-Ask user for file path:
-```
-Please provide the path to the task configuration file:
-```
-
-Read and parse the JSON file.
-
-### Step 2: Validate Configuration
-
-1. Check `_export_version` for compatibility (currently "1.0")
-2. Validate required fields exist: `name`, `system_prompt`, `user_prompt`, `output_modality`
-3. Validate `output_format` matches modality rules
-
-If validation fails, show specific error and exit.
-
-### Step 3: Resolve Model
-
-The export contains `llm_model_name`. Fetch available models and find matching UUID:
+### Create an Agent
 
 ```bash
-curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/model" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json"
-```
-
-Search for model by name (case-insensitive match on `name` or `internal_name`).
-
-**If model found:** Use its `id` as `llm_model_id`
-
-**If model NOT found:**
-```
-The model '{llm_model_name}' is not available in this project.
-```
-Use AskUserQuestion to let user select an alternative model from available options.
-
-### Step 4: Check for Name Conflicts
-
-Fetch existing tasks and check if name already exists:
-
-```bash
-curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task?name={task_name}" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json"
-```
-
-**If duplicate exists:**
-Use AskUserQuestion:
-- Question: "A task named '{name}' already exists. What should I do?"
-- Header: "Conflict"
-- Options:
-  - **Use different name** - I'll provide a new name
-  - **Auto-rename** - Create as "{name} (imported)"
-  - **Cancel import** - Don't import this task
-
-### Step 5: Create Task
-
-Transform import config to TaskCreate format:
-- Replace `llm_model_name` with resolved `llm_model_id`
-- Remove export metadata fields (`_export_version`, `_exported_at`, `_source_project`, `_notes`)
-
-```bash
-curl -s -X POST "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task" \
+curl -s -X POST "{API_BASE}/org/{ORG_ID}/project/{PROJECT_ID}/task-agent" \
   -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
   -d @- << 'EOF'
 {
-  "name": "Task Name",
-  "description": "...",
-  "enabled": true,
-  "system_prompt": "...",
-  "user_prompt": "...",
-  "output_modality": "json",
-  "output_format": {...},
-  "llm_model_id": "resolved-model-uuid",
-  "llm_config": {...},
-  "input_processors": [...],
-  "image_required": false
+  "name": "Research Assistant",
+  "description": "Searches and summarizes findings",
+  "instruction": "You are a research assistant. Given a topic, search for relevant information and produce a structured summary.",
+  "mode": "agentic",
+  "llm_model_id": "model-uuid",
+  "task_tools": [
+    {"task_id": "search-task-uuid", "is_output_formatter": false},
+    {"task_id": "summary-task-uuid", "is_output_formatter": true}
+  ],
+  "skills": [],
+  "integrations": [],
+  "mcp_servers": [],
+  "memory_strategy": "sliding_window",
+  "memory_config": {"max_events": 100},
+  "max_turns": 15
 }
 EOF
 ```
 
-### Step 6: Confirm Import
-
-On success:
-```
-Task imported successfully!
-Task ID: {task_id}
-
-View and configure in dashboard: https://app.rightbrain.ai/task/{task_id}/run
-(Access token available in task settings)
-
-Note: If this task used RAG or task forwarding, you'll need to reconfigure those settings in the dashboard.
-```
-
----
-
-## Task Design Workflow (Create New Task)
-
-This is the original task creation workflow for designing new tasks from scratch.
-
-### Phase 1: Discovery
-
-Start by understanding what the user wants to accomplish:
-
-**Questions to ask:**
-1. "What problem are you trying to solve?"
-2. "What inputs will you have available?"
-3. "What outputs do you need to make decisions?"
-
-**Validation checks:**
-| Red Flag | Problem | Solution |
-|----------|---------|----------|
-| "Keep track of..." | Requires state | Pass all context as input each run |
-| "Remember the last..." | Needs memory | Use external storage, pass context as input |
-| "Update the database..." | Side effects | Return data, handle storage separately |
-| "Do X, then Y, then Z" | Multiple responsibilities | Split into separate composable tasks |
-| "Analyze this" (vague) | Inconsistent results | Provide specific, directive instructions |
-
-**Single responsibility check:**
-If the task goal contains "and then" or "also", suggest splitting:
-```
-❌ "Classify the email AND extract key dates AND draft a reply"
-✅ Task 1: "Classify email intent"
-✅ Task 2: "Extract dates from email"
-✅ Task 3: "Draft reply based on classification"
-```
-
-### Phase 2: Input Design
-
-Define what the task receives. Inputs are defined in `user_prompt` using `{variable_name}` syntax.
-
-**Input types:**
-
-| Input Type | Implementation | Use Case |
-|------------|----------------|----------|
-| Text | `{variable_name}` in user_prompt | Customer message, document text |
-| Image | `image_required: true` | Photo analysis, document scanning |
-| PDF/DOC | `document_content_extractor` processor | Contract review, invoice parsing |
-| URL | `url_fetcher` processor | Web scraping, link analysis |
-| Web Search | `perplexity_search` processor | Research, fact-checking |
-
-**Input processor configuration:**
-```json
-"input_processors": [
-  {
-    "param_name": "website_content",
-    "input_processor": "url_fetcher"
-  },
-  {
-    "param_name": "research_results",
-    "input_processor": "perplexity_search",
-    "config": {
-      "max_results": 5,
-      "query_context": "{research_results} latest news and features"
-    }
-  }
-]
-```
-
-**Important - Input Processor Data Flow:**
-- `param_name` is BOTH the input AND output variable
-- The user passes a value for `param_name` (e.g., `{"research_results": "OpenAI"}`)
-- The processor uses this value to perform its action (search, fetch, extract)
-- The result REPLACES the original value in that same variable
-- `query_context` must reference the SAME variable as `param_name`
-
-**Example:** For a competitor analysis task:
-```json
-{
-  "param_name": "research_results",
-  "input_processor": "perplexity_search",
-  "config": {
-    "query_context": "{research_results} AI platform features pricing"
-  }
-}
-```
-User calls: `{"competitor_name": "OpenAI", "research_results": "OpenAI"}`
-- `{competitor_name}` stays as "OpenAI" (for display in prompt)
-- `{research_results}` becomes the Perplexity search results
-
-### Phase 3: Prompt Engineering
-
-Generate well-structured prompts using proven patterns.
-
-**System prompt structure:**
-```
-You are a [role/expert type] specializing in [domain].
-
-Your expertise includes:
-- [Capability 1]
-- [Capability 2]
-
-Constraints:
-- [Constraint 1]
-- [Constraint 2]
-```
-
-**User prompt structure:**
-```
-## Goal
-[One clear sentence describing what to accomplish]
-
-## Context
-[Background information about the task domain]
-
-## Input
-{variable_1}: [Description of what this variable contains]
-{variable_2}: [Description of what this variable contains]
-
-## Instructions
-1. [Step 1]
-2. [Step 2]
-3. [Step 3]
-
-## Output Requirements
-- [Requirement 1]
-- [Requirement 2]
-```
-
-See [Prompt Patterns Reference](references/prompt-patterns.md) for detailed templates.
-
-### Phase 4: Output Schema Design
-
-Define structured outputs based on the task type. See [Output Formats Reference](references/output-formats.md) for complete documentation.
-
-**Quick reference - Output modalities:**
-| Modality | When to Use | `output_format` |
-|----------|-------------|-----------------|
-| `json` | Structured data, classification | **Required** - define schema |
-| `text` | Long-form content | Must be `null` |
-| `image` / `audio` / `csv` / `pdf` | Media generation | Must be `null` |
-
-**Common patterns:**
-
-```json
-// Enum (constrained choices)
-"sentiment": {"type": "str", "options": ["positive", "negative", "neutral"]}
-
-// Nested list
-"items": {"type": "list", "item_type": "object", "nested_structure": {"name": "str", "value": "number"}}
-```
-
-### Phase 5: Model & Configuration
-
-**Model selection guidance:**
-| Task Type | Recommended Model | Temperature |
-|-----------|-------------------|-------------|
-| Classification | Fast model (e.g., GPT-4o-mini) | 0.0 - 0.3 |
-| Extraction | Accurate model (e.g., GPT-4o) | 0.0 - 0.2 |
-| Analysis | Reasoning model (e.g., Claude 3.5) | 0.3 - 0.5 |
-| Generation | Creative model | 0.5 - 0.8 |
-| Image Output | Image model (e.g., Gemini Flash Image) | 0.6 - 0.8 |
-
-**Fallback model:** Configure `fallback_llm_model_id` for resilience.
-
-**Vision tasks (image input):** Use models with `supports_vision: true`.
-
-**Image generation tasks (image output):** Use models with `supports_image_output: true`. See [Image Generation Guide](references/image-generation.md).
-
-### Phase 6: Generate Configuration
-
-Output a complete, API-ready JSON configuration:
-
-```json
-{
-  "name": "Task Name",
-  "description": "What this task does",
-  "enabled": true,
-  "output_modality": "json",
-  "system_prompt": "...",
-  "user_prompt": "...",
-  "llm_model_id": "UUID-of-selected-model",
-  "llm_config": {
-    "temperature": 0.3
-  },
-  "output_format": {
-    "field_1": "str",
-    "field_2": "int"
-  },
-  "image_required": false,
-  "input_processors": []
-}
-```
-
-### Phase 7: Deploy to Rightbrain API
-
-Since we already have credentials from Phase 0, proceed directly to deployment.
-
-**Step 1: Fetch available models**
+### Run an Agent
 
 ```bash
-curl -s -X GET "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/model" \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json"
-```
-
-Parse the response to find the best model for the task type. Look for:
-- `id`: The model UUID to use in `llm_model_id`
-- `name`: Human-readable model name
-- `supports_vision`: Required for image tasks
-
-**Step 2: Create the task**
-
-```bash
-curl -s -X POST "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/task" \
+curl -s -X POST "{API_BASE}/org/{ORG_ID}/project/{PROJECT_ID}/task-agent/{AGENT_ID}/run" \
   -H "Authorization: Bearer {ACCESS_TOKEN}" \
   -H "Content-Type: application/json" \
   -d @- << 'EOF'
 {
-  "name": "Task Name",
-  ...complete task configuration...
+  "message": "Research quantum computing developments in 2026",
+  "session_id": null
 }
 EOF
 ```
 
-**Step 3: Report results**
+Response streams via SSE. Pass `session_id` from a previous run to continue the conversation.
 
-On success, tell the user:
-- Task ID (for future reference)
-- Task access token (for running the task)
-- How to run the task via API
-- Link to view task in dashboard: `https://app.rightbrain.ai/task/{task_id}/run`
-
-On failure, parse the error and help fix it:
-- 400 errors: Show validation message, suggest fix
-- 400 `duplicate_task_name`: Use a unique task name (add version suffix like "v2")
-- 401 errors: Session expired — re-run `npx rightbrain@latest login`
-- 403 errors: Permission issue
-
-**Step 4: Offer to run the task**
-
-Ask if the user wants to test the task immediately. If yes, proceed to [Run Task Flow](#run-task-flow).
+**Agent modes:**
+- **Agentic**: LLM chooses tools, supports all four primitives, parallel execution
+- **Sequential**: Fixed pipeline, task tools only (min 2), no skills/integrations/MCP
 
 ---
 
-## API Reference
+## Skills Quick-Start
+
+For full skills workflows, see [Skills Catalog Reference](references/skills-catalog.md).
+
+### Browse Skills
+
+```bash
+curl -s -X GET "{API_BASE}/skill/available" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
+  -H "Content-Type: application/json"
+```
+
+### Create a Skill
+
+```bash
+curl -s -X POST "{API_BASE}/org/{ORG_ID}/project/{PROJECT_ID}/skill" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d @- << 'EOF'
+{
+  "slug": "compliance-checker",
+  "display_name": "Compliance Checker",
+  "description": "Validates agent actions against GDPR and internal compliance policies",
+  "instructions": "## When to Use\nBefore any action that involves personal data.\n\n## Steps\n1. Identify personal data fields\n2. Check consent status\n3. Apply data minimization\n\n## Constraints\n- Never process data without verified consent\n- Log all compliance decisions",
+  "reference_docs": {},
+  "skill_metadata": {"author": "security-team"}
+}
+EOF
+```
+
+Skills are declarative instructions, not executable tools. They teach agents domain knowledge. Agentic mode only.
+
+---
+
+## Integrations Quick-Start
+
+For full integration workflows, see [Integrations Reference](references/integrations.md).
+
+### Connect Google Sheets
+
+```bash
+# 1. Create the integration
+curl -s -X POST "{API_BASE}/integration" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d @- << 'EOF'
+{"type": "google_sheets"}
+EOF
+
+# 2. Authorize (returns URL for browser OAuth)
+curl -s -X POST "{API_BASE}/integration/{INTEGRATION_ID}/authorize" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
+  -H "Content-Type: application/json"
+```
+
+**CRITICAL:** Google Sheets has 17 tools (~936k tokens). Always use `allowed_tool_ids` when attaching to agents:
+```json
+{"project_integration_id": "uuid", "allowed_tool_ids": ["values_get", "values_update", "values_append"]}
+```
+
+Available types: `google_sheets`, `google_docs`, `google_slides`, `google_calendar`, `google_gmail`
+
+---
+
+## MCP Servers Quick-Start
+
+For full MCP workflows, see [MCP Servers Reference](references/mcp-servers.md).
+
+### Add an MCP Server
+
+```bash
+# 1. Discover tools
+curl -s -X POST "{API_BASE}/task_mcp_server/discover" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d @- << 'EOF'
+{"url": "https://mcp.example.com/sse", "transport": "sse"}
+EOF
+
+# 2. Create server
+curl -s -X POST "{API_BASE}/task_mcp_server" \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d @- << 'EOF'
+{"name": "My MCP Server", "url": "https://mcp.example.com/sse", "transport": "sse"}
+EOF
+```
+
+Attach to agent: `{"task_mcp_server_id": "uuid", "allowed_tool_ids": null}`
+
+If the server requires OAuth, use `GET /task_mcp_server/authorize?url=...` first.
+
+---
+
+## Common API Patterns
 
 ### Base URL
-- **Production**: `https://app.rightbrain.ai/api/v1`
-
-### Endpoints Used
-
-| Action | Method | Endpoint | Notes |
-|--------|--------|----------|-------|
-| List organizations | GET | `/org` | Returns user's organizations |
-| List projects | GET | `/org/{org_id}/project` | Returns projects in org |
-| List models | GET | `/org/{org_id}/project/{project_id}/model` | Returns available models |
-| List tasks | GET | `/org/{org_id}/project/{project_id}/task` | Returns tasks in project |
-| Get task | GET | `/org/{org_id}/project/{project_id}/task/{task_id}` | Returns task with revisions |
-| Create task | POST | `/org/{org_id}/project/{project_id}/task` | Body: TaskCreate JSON |
-| Update task | POST | `/org/{org_id}/project/{project_id}/task/{task_id}` | Creates new revision |
-| Run task | POST | `/org/{org_id}/project/{project_id}/task/{task_id}/run` | Body: `{"task_input": {...}}` |
-
-### Task Run Payload Format
-
-**Critical:** Task inputs must be wrapped in `task_input`:
-
-```json
-{
-  "task_input": {
-    "variable_1": "value1",
-    "variable_2": "value2"
-  }
-}
-```
-
-Passing parameters at the root level will return a validation error.
+`{API_BASE}`
 
 ### Authentication
-
 All requests require:
 ```
-Authorization: Bearer {access_token}
+Authorization: Bearer {ACCESS_TOKEN}
 Content-Type: application/json
 ```
 
-Credentials are obtained via `npx rightbrain@latest login` and stored in `~/.rightbrain/credentials.json`.
+### JSON Payloads
+Always use heredoc syntax for reliability:
+```bash
+curl -s -X POST "{API_BASE}/..." \
+  -H "Authorization: Bearer {ACCESS_TOKEN}" \
+  -H "Content-Type: application/json" \
+  -d @- << 'EOF'
+{"key": "value"}
+EOF
+```
+
+### Array Update Semantics (Agents)
+For `task_tools`, `skills`, `integrations`, `mcp_servers`:
+- **Omitted** = no change
+- **Empty list `[]`** = clear all
+- **Non-empty list** = full replacement (not merge)
 
 ---
 
 ## Error Handling
 
-### HTTP Status Errors
-
 | Status | Cause | Solution |
 |--------|-------|----------|
 | 400 | Validation error | Check error message, fix input |
-| 400 | `duplicate_task_name` | Task name already exists - use unique name |
-| 401 | Invalid/expired session | Re-run `npx rightbrain@latest login` to refresh credentials |
-| 403 | No permission on resource | Verify access in dashboard |
-| 404 | Resource not found | Verify org/project/task IDs are correct |
-| 429 | Rate limit exceeded | Wait 30 seconds before retrying |
+| 400 | `duplicate_task_name` | Use a unique name |
+| 401 | Invalid/expired session | Re-run `npx rightbrain@latest login` |
+| 403 | No permission | Verify access in dashboard |
+| 404 | Resource not found | Check org/project/resource IDs |
+| 429 | Rate limit | Wait 30 seconds, retry |
 | 500 | Server error | Retry after a few seconds |
 
-### Network Errors
-
-| Error Type | Cause | Solution |
-|------------|-------|----------|
-| Connection timeout | Network issue or server unreachable | Check internet connection, retry in 10 seconds |
-| Connection refused | Server down or wrong URL | Verify API URL is correct, check Rightbrain status |
-| SSL/TLS error | Certificate issue | Never use `-k` or `--insecure` flags - report to Rightbrain support |
-| Empty response | Server returned no data | Retry request, check API status if persistent |
-
-**Timeout handling:** Add `--connect-timeout 10 --max-time 30` to curl commands for long-running requests:
-
-```bash
-curl -s --connect-timeout 10 --max-time 30 -X POST "..." \
-  -H "Authorization: Bearer {ACCESS_TOKEN}" \
-  -H "Content-Type: application/json" \
-  -d '...'
-```
-
-**Retry strategy:** For 429 and 5xx errors, wait and retry up to 3 times with exponential backoff (10s, 30s, 60s).
+Add timeouts for long requests: `--connect-timeout 10 --max-time 30`
 
 ---
 
 ## Validation Rules
 
-See [Task Components Reference](references/task-components.md) for complete validation rules.
-
-**Key constraints:**
-- **Task name:** Alphanumeric, hyphens, spaces only. Max 63 chars. Must be unique in project.
+- **Task name:** Alphanumeric, hyphens, spaces. Max 63 chars. Unique per project.
 - **Output format keys:** Alphanumeric, underscore, dot, hyphen. 1-64 chars.
 - **Modality rules:** `json` requires output_format; all others require `null`.
-- **Input processors:** `param_name` must exist as `{variable}` in user_prompt.
+- **Sequential agents:** Minimum 2 task tools, no skills/integrations/MCP.
+- **Agent instructions:** Avoid curly braces `{like_this}` -- ADK treats them as session state variables.
 
----
-
-## Quick Reference
-
-### Task Types & Examples
-
-| Pattern | Example | Key Features |
-|---------|---------|--------------|
-| **Classification** | Sentiment analysis, ticket routing | Enum outputs, low temperature |
-| **Extraction** | Invoice parsing, entity recognition | Structured output, lists |
-| **Generation** | Email drafting, content creation | Higher temperature, text output |
-| **Analysis** | Risk assessment, competitive intel | Multiple output fields |
-| **Validation** | Compliance check, quality review | Boolean outputs |
-| **Image** | Social media visuals, product photos | `output_modality: "image"`, `supports_image_output` models |
-
-### Common Configurations
-
-**Classification task:**
-```json
-{
-  "output_modality": "json",
-  "output_format": {
-    "category": {"type": "str", "options": ["A", "B", "C"]},
-    "confidence": "number",
-    "reasoning": "str"
-  }
-}
-```
-
-**Extraction task:**
-```json
-{
-  "output_modality": "json",
-  "image_required": true,
-  "output_format": {
-    "extracted_data": {
-      "type": "list",
-      "item_type": "object",
-      "nested_structure": {
-        "field": "str",
-        "value": "str"
-      }
-    }
-  }
-}
-```
-
-**Generation task:**
-```json
-{
-  "output_modality": "text",
-  "output_format": null,
-  "llm_config": {"temperature": 0.7}
-}
-```
-
-**Image generation task:**
-```json
-{
-  "output_modality": "image",
-  "output_format": null,
-  "llm_model_id": "MODEL_WITH_supports_image_output_TRUE",
-  "llm_config": {"temperature": 0.8}
-}
-```
-
-See [Image Generation Guide](references/image-generation.md) for text-prevention techniques and complete examples.
+See [Task Components Reference](references/task-components.md) for complete validation documentation.
 
 ---
 
 ## References
 
-- [Task Components Reference](references/task-components.md) - Complete schema documentation
-- [Prompt Patterns Reference](references/prompt-patterns.md) - Prompt templates and examples
-- [Output Formats Reference](references/output-formats.md) - Type system and validation
-- [Image Generation Guide](references/image-generation.md) - Image tasks and text-prevention techniques
-- [Task Template](assets/task-template.json) - Complete configuration template
-- [Export Schema Example](assets/export-schema-example.json) - Example export file format
+**Workflow guides:**
+- [Tasks Reference](references/tasks.md) - Create, browse, run, update, export, import tasks
+- [Agents Reference](references/agents.md) - Create, run, manage TaskAgents
+- [Skills Catalog Reference](references/skills-catalog.md) - Browse, create, manage skills
+- [Integrations Reference](references/integrations.md) - Google Workspace connections
+- [MCP Servers Reference](references/mcp-servers.md) - External tool providers
+
+**Task-specific references:**
+- [Task Components](references/task-components.md) - Complete schema documentation
+- [Prompt Patterns](references/prompt-patterns.md) - Prompt templates and examples
+- [Output Formats](references/output-formats.md) - Type system and validation
+- [Image Generation](references/image-generation.md) - Image tasks and text-prevention
+
+**Templates:**
+- [Task Template](assets/task-template.json) - Complete task configuration
+- [Agent Template](assets/agent-template.json) - Complete agent configuration with all primitive types
+- [Export Schema Example](assets/export-schema-example.json) - Example export file
 - [Classification Examples](assets/examples/classification.md)
 - [Extraction Examples](assets/examples/extraction.md)
 - [Generation Examples](assets/examples/generation.md)

@@ -367,7 +367,7 @@ To execute a task, POST to `/org/{org_id}/project/{project_id}/task/{task_id}/ru
 For a task with `perplexity_search` input processor:
 
 ```bash
-curl -s -X POST "https://app.rightbrain.ai/api/v1/org/{org_id}/project/{project_id}/task/{task_id}/run" \
+curl -s -X POST "{API_BASE}/org/{org_id}/project/{project_id}/task/{task_id}/run" \
   -H "Authorization: Bearer {api_key}" \
   -H "Content-Type: application/json" \
   -d '{

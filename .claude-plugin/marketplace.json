@@ -11,15 +11,15 @@
     {
       "name": "rightbrain-tasks",
       "source": "./plugins/rightbrain-tasks",
-      "description": "Complete task manager for the Rightbrain API. Create, browse, run, update, export, and import AI tasks.",
-      "version": "1.0.0",
+      "description": "Complete manager for the Rightbrain API. Create and manage Tasks, TaskAgents, Skills, Integrations, and MCP Servers.",
+      "version": "2.0.0",
       "author": {
         "name": "Rightbrain AI"
       },
       "homepage": "https://rightbrain.ai",
       "repository": "https://github.com/RightbrainAI/claude-code-skills",
       "license": "MIT",
-      "keywords": ["rightbrain", "ai", "tasks", "llm", "api"]
+      "keywords": ["rightbrain", "ai", "tasks", "agents", "skills", "integrations", "mcp", "llm", "api"]
     }
   ]
 }
