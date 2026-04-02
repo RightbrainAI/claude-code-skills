@@ -2,7 +2,7 @@
 
 Detailed workflows for connecting and managing Google Workspace integrations with Rightbrain agents.
 
-> **Prerequisites:** Authentication and context (ACCESS_TOKEN, ORG_ID, PROJECT_ID) must be established before using these workflows. See SKILL.md Phase 0.
+> **Prerequisites:** Authentication and context (API_BASE, ACCESS_TOKEN, ORG_ID, PROJECT_ID) must be established before using these workflows. See SKILL.md Phase 0.
 
 ---
 

@@ -405,6 +405,7 @@ See [Task Components Reference](references/task-components.md) for complete vali
 - [Skills Catalog Reference](references/skills-catalog.md) - Browse, create, manage skills
 - [Integrations Reference](references/integrations.md) - Google Workspace connections
 - [MCP Servers Reference](references/mcp-servers.md) - External tool providers
+- [Architecture Guide](references/architecture-guide.md) - Choosing the right primitive, cost model, composition patterns
 
 **Task-specific references:**
 - [Task Components](references/task-components.md) - Complete schema documentation

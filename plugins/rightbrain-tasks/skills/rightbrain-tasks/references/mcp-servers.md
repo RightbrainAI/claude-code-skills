@@ -2,7 +2,7 @@
 
 Detailed workflows for discovering, creating, and managing MCP (Model Context Protocol) servers in Rightbrain.
 
-> **Prerequisites:** Authentication and context (ACCESS_TOKEN, ORG_ID, PROJECT_ID) must be established before using these workflows. See SKILL.md Phase 0.
+> **Prerequisites:** Authentication and context (API_BASE, ACCESS_TOKEN, ORG_ID, PROJECT_ID) must be established before using these workflows. See SKILL.md Phase 0.
 
 ---
 
