@@ -1,0 +1,66 @@
+{
+  "$comment": "Complete Rightbrain TaskAgent configuration template - all fields shown with descriptions",
+
+  "name": "Agent Name Here",
+  "description": "What this agent does - shown in listings and used by parent agents",
+
+  "instruction": "You are a [role]. Given [input type], [what to do]. Produce [expected output].",
+
+  "mode": "agentic",
+
+  "llm_model_id": "00000000-0000-0000-0000-000000000000",
+
+  "task_tools": [
+    {
+      "$comment": "A regular task tool the agent can call",
+      "task_id": "00000000-0000-0000-0000-000000000001",
+      "is_output_formatter": false
+    },
+    {
+      "$comment": "Output formatter - shapes the agent's final response. Only one allowed.",
+      "task_id": "00000000-0000-0000-0000-000000000002",
+      "is_output_formatter": true
+    }
+  ],
+
+  "skills": [
+    {
+      "$comment": "Follow latest active revision",
+      "skill_id": "00000000-0000-0000-0000-000000000003",
+      "skill_revision_id": null
+    },
+    {
+      "$comment": "Pinned to specific revision for stability",
+      "skill_id": "00000000-0000-0000-0000-000000000004",
+      "skill_revision_id": "00000000-0000-0000-0000-000000000005"
+    }
+  ],
+
+  "integrations": [
+    {
+      "$comment": "Google Sheets with tool filtering (mandatory for Sheets)",
+      "project_integration_id": "00000000-0000-0000-0000-000000000006",
+      "allowed_tool_ids": ["values_get", "values_update", "values_append"]
+    },
+    {
+      "$comment": "Google Calendar with all tools exposed",
+      "project_integration_id": "00000000-0000-0000-0000-000000000007",
+      "allowed_tool_ids": null
+    }
+  ],
+
+  "mcp_servers": [
+    {
+      "$comment": "External MCP server with tool filtering",
+      "task_mcp_server_id": "00000000-0000-0000-0000-000000000008",
+      "allowed_tool_ids": ["search", "get_document"]
+    }
+  ],
+
+  "memory_strategy": "sliding_window",
+  "memory_config": {
+    "max_events": 100
+  },
+
+  "max_turns": 15
+}

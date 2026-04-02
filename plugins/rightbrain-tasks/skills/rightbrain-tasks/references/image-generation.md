@@ -49,7 +49,7 @@ When fetching models, filter for those with `supports_image_output: true`:
 
 **Finding image models:**
 ```bash
-curl -s "https://app.rightbrain.ai/api/v1/org/{ORG_ID}/project/{PROJECT_ID}/model" \
+curl -s "{API_BASE}/org/{ORG_ID}/project/{PROJECT_ID}/model" \
   -H "Authorization: Bearer {API_KEY}" | \
   jq '.[] | select(.supports_image_output == true) | {id, name, alias}'
 ```
@@ -219,7 +219,7 @@ Image tasks return a download URL instead of text content:
 
 **Downloading the generated image:**
 ```bash
-curl -s "https://app.rightbrain.ai/api/v1{download_url}" \
+curl -s "{API_BASE}{download_url}" \
   -H "Authorization: Bearer {API_KEY}" \
   -o output.png
 ```
