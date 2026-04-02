@@ -9,8 +9,8 @@
   },
   "plugins": [
     {
-      "name": "rightbrain-tasks",
-      "source": "./plugins/rightbrain-tasks",
+      "name": "rightbrain-manager",
+      "source": "./plugins/rightbrain-manager",
       "description": "Complete manager for the Rightbrain API. Create and manage Tasks, TaskAgents, Skills, Integrations, and MCP Servers.",
       "version": "2.0.0",
       "author": {

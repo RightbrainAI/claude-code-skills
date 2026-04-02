@@ -1,5 +1,5 @@
 ---
-name: rightbrain-tasks
+name: rightbrain-manager
 description: |
   Complete manager for the Rightbrain API. Create and manage Tasks, TaskAgents, Skills, Integrations, and MCP Servers.
   Trigger with "rightbrain tasks", "rightbrain agent", "rightbrain skill", "rightbrain integration",
